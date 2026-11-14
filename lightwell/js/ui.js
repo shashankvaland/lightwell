@@ -349,6 +349,22 @@
     const tc = ['rgba(60,198,180,.25)', 'rgba(127,184,255,.22)', 'rgba(186,140,255,.25)'];
     for (const un of L.units) { const r = un.r; g.fillStyle = tc[un.t]; g.fillRect(X(r[0]), Y(r[1]), (r[2] - r[0]) * sc, (r[3] - r[1]) * sc);
       g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 2; g.strokeRect(X(r[0]) + 1, Y(r[1]) + 1, (r[2] - r[0]) * sc - 2, (r[3] - r[1]) * sc - 2); }
+    // Daylight X-ray: a dark band along each window wall that faces a nearby building, labelled with its compass side and dim floors
+    if (p.day) {
+      const T = 20, x0 = X(0), y0 = Y(0), w = b.W * sc, h = b.D * sc;
+      g.font = 'bold 14px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      for (const [k, wl] of Object.entries(p.day.walls)) {
+        if (k === 'court') continue;
+        const band = { n: [x0, y0, w, T], s: [x0, y0 + h - T, w, T], w: [x0, y0, T, h], e: [x0 + w - T, y0, T, h] }[k]; if (!band) continue;
+        g.fillStyle = 'rgba(10,14,24,.75)'; g.fillRect(...band);
+        g.save(); g.translate(band[0] + band[2] / 2, band[1] + band[3] / 2); if (k === 'w') g.rotate(-Math.PI / 2); if (k === 'e') g.rotate(Math.PI / 2);
+        g.fillStyle = '#ffb3bd'; g.fillText(`${LW.compass(b.day.face[k])} · dim on floors ${wl.from}–${wl.to}`, 0, 1); g.restore();
+      }
+      const cw = p.day.walls.court;
+      if (cw && L.court) { const r = L.court; g.strokeStyle = 'rgba(10,14,24,.9)'; g.lineWidth = 8; g.strokeRect(X(r[0]) + 4, Y(r[1]) + 4, (r[2] - r[0]) * sc - 8, (r[3] - r[1]) * sc - 8);
+        g.fillStyle = '#ffb3bd'; g.fillText(`court dim on floors ${cw.from}–${cw.to}`, X((r[0] + r[2]) / 2), Y((r[1] + r[3]) / 2) + 30); }
+      g.textBaseline = 'alphabetic';
+    }
     // fire-safety overlay: the home farthest from a stair, and its route
     if ($('showRoute').checked) {
       // walking distance (along corridors, so horizontal + vertical) from a home's centre to a core
@@ -370,6 +386,7 @@
     g.fillStyle = '#8f9ab0'; g.fillRect(ox, oy + b.D * sc + 18, 50 * sc, 4); g.font = '16px system-ui'; g.textAlign = 'left'; g.fillText('50 ft', ox + 50 * sc + 8, oy + b.D * sc + 25);
     const a = b.alt;
     $('plateStats').innerHTML = `<b>${pct(p.daylitFrac)}</b> daylit · <b>${p.perFloor}</b> homes per floor · <b>${fmt(p.homes)}</b> homes · <b>${money(p.cpu)}</b> per home · fire screen (preliminary) <b class="st-${s.status}">${LW.SAFE_LABEL[s.status].toLowerCase()}</b>` +
+      (p.day ? ` · <b>${fmt(p.day.dim)}</b> homes face a neighbour` : '') +
       (a ? ` &nbsp;|&nbsp; ${a.lw ? 'With' : 'Without'} lightwell: ${fmt(a.homes)} homes at ${money(a.cpu)}` : '');
   }
   LW.openPlate = openPlate;
@@ -405,8 +422,9 @@ ${LW.briefText(LW.S)}
 - **Building:** ${b.heightM} m [${tagOf('floors')}], ${LW.eff(b, 'floors')} floors, plate ${b.W} x ${b.D} ft [${tagOf('plate')}], ${LW.eff(b, 'f2f')} ft floor-to-floor [${tagOf('f2f')}], core [${tagOf('core')}].
 - **Market:** ${LW.eff(b, 'rep') == null ? 'leased share unknown' : pct(LW.eff(b, 'rep')) + ' leased'} [${tagOf('rep')}], ${LW.eff(b, 'year') == null ? 'year built unknown' : 'built ' + LW.eff(b, 'year')} [${tagOf('year')}].
 - **Aerial:** ${obs.length ? `parking ${obs.map(pct).join(', ')} full across ${obs.length} captures${b.obsDates ? ' (' + b.obsDates.join(', ') + ')' : ''}` : 'no parking counts'} [${tagOf('obs')}]${LW.S.useParking ? '' : '; ignored by the brief'}.
-- **Daylight test:** ${sm.daylit_pct}% of the usable floor is homes within ${LW.S.u} ft of a window.${sm.lightwell ? ' A lightwell cut brings light to the core.' : ''}
+- **Daylight test:** ${sm.daylit_pct}% of the usable floor is homes within ${LW.S.u} ft of a window${sm.dim_homes != null ? ' that sees the sky' : ''}.${sm.lightwell ? ' A lightwell cut brings light to the core.' : ''}
 - **Preliminary fire screen (${LW.SAFE_LABEL[sm.fire_screen].toLowerCase()}):** farthest home about ${sm.farthest_home_ft} ft from a stair; stairs about ${sm.stair_sep_ft} ft apart (estimates; ${sf.assumed[0].toLowerCase()}).${sm.fire_notes.length ? ' ' + sm.fire_notes.join('. ') + '.' : ''}
+- **Daylight from neighbours (screening):** ${sm.dim_homes == null ? 'not checked' : `${fmt(sm.dim_homes)} homes face a nearby building at the ${sm.daylight_rule_deg}° limit${sm.daylight_strict ? ' (not counted: strict)' : ' (they lower the daylight score)'}`}.
 ${sm.hidden_vacancy_flag ? '- **Observation to investigate:** reported occupancy and observed parking disagree on every capture. This is not a finding; check the rent roll.\n' : ''}${sm.assumed && sm.assumed.length ? sm.assumed.map(a => `- **Assumption:** ${a}.`).join('\n') + '\n' : ''}${fresh && R.review && R.review.length ? '\n## Agent review\n' + R.review.map(x => '- ' + x.replace(/<[^>]+>/g, '')).join('\n') + '\n' : ''}
 ## Proposal
 - ${fmt(sm.homes)} homes: ${sm.mix.studio} studios, ${sm.mix.one_bed} one-beds, ${sm.mix.two_bed} two-beds (${sm.homes_per_floor} per floor; ground floor kept as lobby and retail).
@@ -428,9 +446,9 @@ _Screening estimates generated by Lightwell; not a design, fire or cost review.$
 
 Screened ${LW.B.length} real towers (OpenStreetMap footprints). Brief: ${LW.briefText(LW.S)}. Data: ${LW.dataMode === 'demo' ? 'demo fill-in (simulated values on towers without real records)' : 'real data only'}.
 
-| Tower | Score | Homes | Cost per home | Lightwell | Fire screen (prelim.) | Flag | Unmeasured values |
-|---|---|---|---|---|---|---|---|
-${top.map(b => `| ${b.label} | ${b.score} | ${fmt(b.plan.homes)} | ${money(b.plan.cpu)} | ${b.plan.lw ? 'yes' : 'no'} | ${b.plan.safety.status} | ${b.phantom ? 'investigate' : ''} | ${['rep', 'year', 'obs', 'f2f', 'core'].filter(k => ['SIMULATED', 'MISSING', 'ASSUMED', 'ESTIMATE'].includes(LW.srcOf(b, k))).join(', ')} |`).join('\n')}
+| Tower | Score | Homes | Cost per home | Lightwell | Fire screen (prelim.) | Dim homes | Flag | Unmeasured values |
+|---|---|---|---|---|---|---|---|---|
+${top.map(b => `| ${b.label} | ${b.score} | ${fmt(b.plan.homes)} | ${money(b.plan.cpu)} | ${b.plan.lw ? 'yes' : 'no'} | ${b.plan.safety.status} | ${b.plan.day ? b.plan.day.dim : '–'} | ${b.phantom ? 'investigate' : ''} | ${['rep', 'year', 'obs', 'f2f', 'core'].filter(k => ['SIMULATED', 'MISSING', 'ASSUMED', 'ESTIMATE'].includes(LW.srcOf(b, k))).join(', ')} |`).join('\n')}
 
 **Total:** ${fmt(LW.B.filter(b => b.pass).reduce((s, b) => s + b.plan.homes, 0))} homes across ${LW.B.filter(b => b.pass).length} passing towers; about ${fmt(LW.B.filter(b => b.pass).reduce((s, b) => s + b.plan.carbon, 0))} t CO2e avoided.
 
@@ -445,11 +463,12 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
   $('portfolio').onclick = portfolioMemo;
   $('csv').onclick = () => {
     const q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
-    const F = ['plate', 'core', 'f2f', 'rep', 'year', 'obs', 'vacant'];
+    const F = ['plate', 'core', 'f2f', 'rep', 'year', 'obs', 'vacant', 'daylight'];
     const rows = [['tower', 'address', 'costar_id', 'score', 'passes', 'why_not', 'homes', 'cost_per_home', 'lightwell', 'daylit_pct', 'fire_screen_prelim', 'farthest_home_ft_est',
-      'height_m', 'floors', 'empty_floors', 'phase_one_floors', 'phase_one_homes', 'plate_w_ft', 'plate_d_ft', 'f2f_ft', 'leased_pct', 'year_built', 'parking_pct', 'occupancy_discrepancy', ...F.map(k => 'src_' + k), 'agent_reviewed']];
+      'dim_homes', 'daylight_rule_deg', 'height_m', 'floors', 'empty_floors', 'phase_one_floors', 'phase_one_homes', 'plate_w_ft', 'plate_d_ft', 'f2f_ft', 'leased_pct', 'year_built', 'parking_pct', 'occupancy_discrepancy', ...F.map(k => 'src_' + k), 'agent_reviewed']];
     for (const b of [...LW.B].sort((a, c) => c.score - a.score)) rows.push([b.id, b.real.market ? b.name : '', b.costarId || '', b.score, b.pass, b.why.join('; '), b.plan.homes,
-      isFinite(b.plan.cpu) ? Math.round(b.plan.cpu) : '', b.plan.lw, Math.round(b.plan.daylitFrac * 100), b.plan.safety.status, Math.round(b.plan.safety.travel), b.heightM, LW.eff(b, 'floors'),
+      isFinite(b.plan.cpu) ? Math.round(b.plan.cpu) : '', b.plan.lw, Math.round(b.plan.daylitFrac * 100), b.plan.safety.status, Math.round(b.plan.safety.travel),
+      b.plan.day ? b.plan.day.dim : '', b.plan.day ? b.plan.day.lim : '', b.heightM, LW.eff(b, 'floors'),
       LW.srcOf(b, 'vacant') === 'MISSING' ? '' : b.vacantFloors.length, LW.phaseOne(b) ? LW.phaseOne(b).from + '-' + LW.phaseOne(b).to : '', LW.phaseOne(b) ? LW.phaseOne(b).homes : '', b.W, b.D,
       LW.eff(b, 'f2f'), LW.eff(b, 'rep') == null ? '' : Math.round(LW.eff(b, 'rep') * 100), LW.eff(b, 'year') ?? '', (b.obs || []).map(x => Math.round(x * 100)).join('/'), b.phantom,
       ...F.map(k => LW.srcOf(b, k)), LW.reviewFresh(b)]);
