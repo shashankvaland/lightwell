@@ -37,7 +37,7 @@ Built for **HackPrinceton F26** · Main track: **Best Sustainability Hack**
 Needs Python 3.10+. Works on Windows, macOS and Linux.
 
 ```bash
-git clone https://github.com/<your-username>/lightwell.git
+git clone https://github.com/shashankvaland/lightwell.git
 cd lightwell
 pip install -r backend/requirements.txt
 ```
