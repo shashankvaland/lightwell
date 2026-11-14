@@ -580,14 +580,14 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
     LW.view.setFloors(LW.floorsOn);
   };
 
-  // ---------- Matterport 3D tour: CoStar's scans of the building (an SDK key in config.js is passed on when set) ----------
+  // ---------- Matterport 3D tour: CoStar's scans of the building ----------
+  // A plain embed with no SDK key in the address: with a key, Matterport waits for an SDK connection the page never makes.
   LW.tour = function (b) {
-    const ms = b.models || [], key = (window.LIGHTWELL_CONFIG || {}).MATTERPORT_SDK_KEY; if (!ms.length) return;
+    const ms = b.models || []; if (!ms.length) return;
     const show = id => { const m = encodeURIComponent(id);
-      $('mpFrame').src = `https://my.matterport.com/show/?m=${m}&play=1&qs=1${key ? '&applicationKey=' + encodeURIComponent(key) : ''}`;
-      $('mpOpen').href = `https://my.matterport.com/show/?m=${m}`; };
+      $('mpFrame').src = `https://my.matterport.com/show/?m=${m}&play=1&qs=1`; $('mpOpen').href = `https://my.matterport.com/show/?m=${m}`; };
     $('mpTitle').textContent = `${b.label} · 3D tour`;
-    $('mpNote').textContent = `${ms.length} Matterport scan${ms.length > 1 ? 's' : ''} from the CoStar data kit · tours may show a suite or the lobby, not a whole floor`;
+    $('mpNote').textContent = `${ms.length} Matterport scan${ms.length > 1 ? 's' : ''} from the CoStar data kit · may show a suite or the lobby, not a whole floor · the first load can take up to a minute`;
     $('mpModel').innerHTML = ms.map((m, i) => `<option value="${esc(m)}">Scan ${i + 1} of ${ms.length}</option>`).join('');
     $('mpModel').onchange = () => show($('mpModel').value);
     show(ms[0]); $('mpBox').style.display = 'flex';

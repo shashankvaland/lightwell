@@ -148,7 +148,7 @@ The agent's CoStar, Vexcel and Matterport tools read these imported values; they
 ### Keys: where each one goes
 | Key | Put it in | Used for |
 |---|---|---|
-| Matterport **SDK key** | `lightwell/config.js` → `MATTERPORT_SDK_KEY` | the 3D tour of CoStar's scans (it also opens without the key; the key's allowed domain is `localhost`) |
+| Matterport **SDK key** | `lightwell/config.js` → `MATTERPORT_SDK_KEY` | not needed today: the 3D tour of CoStar's scans opens without it (kept for a future feature that drives the tour with the SDK) |
 | Matterport **API key** | `.env` → `MATTERPORT_API_KEY` | `backend/matterport.py`: floor plates measured from the scans |
 | Matterport **API token** | `.env` → `MATTERPORT_API_TOKEN` | same (Matterport's names: API Token ID and Token Secret) |
 | Vexcel **api_key** | `.env` → `VEXCEL_API_KEY` | aerial parking images (the download step needs Vexcel's quickstart) |

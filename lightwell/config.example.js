@@ -12,8 +12,8 @@ window.LIGHTWELL_CONFIG = {
   MAPILLARY_TOKEN: "",
 
   // Matterport Showcase SDK key: the "SDK key" on the CoStar Discord card "Matterport GraphQL + SDK" (allowed domain:
-  // localhost, so open the app at http://localhost:8765, not 127.0.0.1). Passed to the 3D tour of CoStar's scans.
-  // The tour also opens without it.
+  // localhost). Not used today: the 3D tour is a plain embed and needs no key (adding the key to the tour made
+  // Matterport wait for an SDK connection the page never makes). Kept for a future feature that drives the tour.
   MATTERPORT_SDK_KEY: "",
 
   // CoStar photos on the building card (links in the CoStar data kit). Off by default: CoStar's image server refused
