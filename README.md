@@ -160,7 +160,7 @@ backend/
 real-data/              CSV templates and column guide
 tests/                  engine geometry + parity tests, backend review-and-replan test
 EVENT_DAY.md            hackathon first-hours checklist
-*.pdf                   project plan (Lightwell) and the earlier FireTrace plan
+Lightwell-Project-Plan.pdf  project plan
 lightwell.html, lightwell-houston.html, houston-map.html, firetrace-3d.html
                         earlier single-file prototypes, kept as offline backups
 ```
