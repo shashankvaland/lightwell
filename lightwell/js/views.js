@@ -46,6 +46,23 @@
     setFlags(list) { if (this.ready) this.map.getSource('flags').setData({ type: 'FeatureCollection',
       features: list.map(b => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: b.center } })) }); },
     show(on) { document.getElementById('map').style.visibility = on ? 'visible' : 'hidden'; if (on && this.ready) this.map.resize(); },
+    // drone orbit: tilt in and keep turning the bearing around the tower until the user touches the map
+    orbit(b) {
+      if (!this.ready) return; this.stopOrbit();
+      const map = this.map; let bearing = 0, last = 0, on = true, started = false;
+      const stop = () => this.stopOrbit();
+      map.once('mousedown', stop); map.once('wheel', stop); map.once('touchstart', stop);
+      map.easeTo({ center: b.center, zoom: 17, pitch: 65, duration: 1200 });
+      const step = t => { if (!on) return; bearing += (t - last) * 0.012; last = t; map.setBearing(bearing % 360); this._raf = requestAnimationFrame(step); };
+      // start turning once the fly-in ends (or after 1.5 s at the latest)
+      const begin = () => { if (!on || started) return; started = true; map.stop();
+        map.jumpTo({ center: b.center, zoom: 17, pitch: 65 });   // make sure we're centred on the tower
+        bearing = map.getBearing(); last = performance.now(); this._raf = requestAnimationFrame(step); };
+      map.once('moveend', begin); this._t = setTimeout(begin, 1500);
+      this._stopOrbit = () => { on = false; clearTimeout(this._t); cancelAnimationFrame(this._raf); };
+    },
+    stopOrbit() { if (this._stopOrbit) { this._stopOrbit(); this._stopOrbit = null; } },
+    canStreet: false,
   };
 
   // ---------------- CesiumJS (Google Photorealistic 3D Tiles) ----------------
@@ -150,6 +167,32 @@
         point: { pixelSize: 14, color: Cesium.Color.fromCssColorString('#ef5d6f'), outlineColor: Cesium.Color.WHITE, outlineWidth: 2,
           disableDepthTestDistance: Number.POSITIVE_INFINITY } });
     },
-    show(on) { document.getElementById('g3d').style.visibility = on ? 'visible' : 'hidden'; },
+    show(on) { document.getElementById('g3d').style.visibility = on ? 'visible' : 'hidden'; if (!on) this.stopOrbit(); },
+
+    // ---- camera modes ----
+    _center(b, frac) { return Cesium.Cartesian3.fromDegrees(b.center[0], b.center[1], this.h0 + b.heightM * frac); },
+    // drone orbit: circle the tower at a 30° downward angle until the user grabs the camera
+    orbit(b) {
+      if (!this.ready) return; this.stopOrbit();
+      const cam = this.viewer.camera, target = this._center(b, 0.45), range = Math.max(b.heightM * 2.4, 380);
+      let heading = cam.heading;
+      const tick = () => { heading += 0.0035; cam.lookAt(target, new Cesium.HeadingPitchRange(heading, Cesium.Math.toRadians(-30), range)); };
+      this._orbitL = this.viewer.scene.preRender.addEventListener(tick);
+      this._stopH = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
+      for (const t of [Cesium.ScreenSpaceEventType.LEFT_DOWN, Cesium.ScreenSpaceEventType.RIGHT_DOWN, Cesium.ScreenSpaceEventType.WHEEL])
+        this._stopH.setInputAction(() => this.stopOrbit(), t);
+    },
+    stopOrbit() {
+      if (this._orbitL) { this._orbitL(); this._orbitL = null; this.viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY); }
+      if (this._stopH) { this._stopH.destroy(); this._stopH = null; }
+    },
+    // street level: stand on the pavement ~150 m south of the tower, eye height, looking up at it
+    canStreet: true,
+    street(b) {
+      if (!this.ready) return; this.stopOrbit();
+      const dLat = 150 / 110540, eye = Cesium.Cartesian3.fromDegrees(b.center[0], b.center[1] - dLat, this.h0 + 2);
+      const look = Math.atan2(b.heightM * 0.6, 150);
+      this.viewer.camera.flyTo({ destination: eye, orientation: { heading: 0, pitch: look * 0.7, roll: 0 }, duration: 2 });
+    },
   };
 })();
