@@ -62,6 +62,27 @@
   const src = (b, k, layer, cls) => b.overrides[k] != null ? ['YOU', 't-you'] : [layer, cls];
   // which layer a value came from: real CoStar / Vexcel / Matterport, or the simulated stand-in
   const mk = b => b.real.market ? ['COSTAR', 't-cs'] : ['SIMULATED', 't-sim'];
+  // A mini elevation of the tower: one bar per floor, empty floors gold, the biggest empty block outlined.
+  function stackSvg(b) {
+    const n = LW.eff(b, 'floors'), H = Math.min(150, Math.max(60, n * 4)), fh = H / n, W = 30, empty = new Set(b.vacantFloors);
+    const big = LW.emptyBlocks(b)[0];
+    let s = `<svg width="${W + 4}" height="${H + 4}" viewBox="-2 -2 ${W + 4} ${H + 4}" role="img" aria-label="Floor stack">`;
+    for (let f = 1; f <= n; f++) {
+      const y = H - f * fh, c = f === 1 ? '#2c8c88' : empty.has(f) ? '#f5b942' : '#3a4766';
+      s += `<rect x="0" y="${y.toFixed(1)}" width="${W}" height="${Math.max(0.6, fh - (fh > 3 ? 1 : 0.3)).toFixed(1)}" fill="${c}"/>`;
+    }
+    if (big) s += `<rect x="-1.5" y="${(H - big.to * fh - 0.5).toFixed(1)}" width="${W + 3}" height="${(big.len * fh).toFixed(1)}" fill="none" stroke="#fff" stroke-width="1.2" rx="1"/>`;
+    return s + '</svg>';
+  }
+  function floorsRow(b) {
+    const n = LW.eff(b, 'floors'), k = b.vacantFloors.length, big = LW.emptyBlocks(b)[0], p = b.plan;
+    const [t, c] = b.real.floors ? ['COSTAR', 't-cs'] : ['SIMULATED', 't-sim'];
+    return `<div class="floorsRow">${stackSvg(b)}<div class="txt"><span class="tag ${c}">${t}</span> <b>Empty floors</b><br>
+      ${k} of ${n - 1} office floors empty${big ? `; biggest block is floors ${big.from}–${big.to}.<br>
+      <b>Phase one:</b> ${fmt(big.len * p.perFloor)} homes on those ${big.len} floors now, the rest as leases end.` : '. No phase one yet.'}</div></div>`;
+  }
+  LW.phaseOne = b => { const big = LW.emptyBlocks(b)[0]; return big ? { ...big, homes: big.len * b.plan.perFloor } : null; };
+
   function renderCard(b) {
     const p = b.plan, s = p.safety, col = LW.hex(LW.scoreRGB(b.score ?? 0)), A = LW.A;
     const [repT, repC] = src(b, 'rep', ...mk(b)), [yrT, yrC] = src(b, 'year', ...mk(b));
@@ -88,6 +109,7 @@
       ${tag(yrT, yrC, `Built ${LW.eff(b, 'year')}`)}
       ${tag(...(b.real.aerial ? ['VEXCEL', 't-vx'] : ['SIMULATED', 't-sim']), parkTxt)}
       ${tag('FEASIBILITY', 't-fz', p.lw ? `Lightwell cut: ${p.perFloor} homes per floor` : `${p.perFloor} homes per floor along the window walls`)}
+      ${floorsRow(b)}
       <div class="find"><span class="tag t-safe ${s.status}">FIRE SAFETY</span><span><b>${safeTxt}.</b> Farthest home ${Math.round(s.travel)} ft from a stair.${s.notes.length ? '<br>' + s.notes.join('<br>') : ''}</span></div>
       ${b.phantom ? tag('FLAG', 't-fx', (b.real.market && b.real.aerial)
         ? `Signal to verify, not a finding: reported ${pct(LW.eff(b, 'rep'))} leased, but parking never above ${pct(Math.max(...b.obs))} across ${b.obs.length} captures. Garages or transit can explain this.`
@@ -188,7 +210,7 @@ ${b.owner ? `\nTo: ${b.owner}\n` : ''}
 ${b.phantom ? '- **Signal to verify:** reported occupancy and observed parking disagree on every capture. This is not a finding; check the rent roll.\n' : ''}
 ## Proposal
 - ${fmt(p.homes)} homes: ${p.mix[0]} studios, ${p.mix[1]} one-beds, ${p.mix[2]} two-beds (${p.perFloor} per floor; ground floor kept as lobby and retail).
-- Estimated ${money(p.cpu)} per home, against roughly ${money(LW.A.newBuildPerHome)} for new construction.
+${LW.phaseOne(b) ? `- **Phase one:** floors ${LW.phaseOne(b).from}-${LW.phaseOne(b).to} are already empty (${b.real.floors ? 'CoStar' : 'simulated'}): ${fmt(LW.phaseOne(b).homes)} homes can start now; convert the rest as leases end.\n` : ''}- Estimated ${money(p.cpu)} per home, against roughly ${money(LW.A.newBuildPerHome)} for new construction.
 - About ${fmt(p.carbon)} t CO2e of embodied carbon avoided.
 
 ## Next steps
@@ -226,9 +248,9 @@ _Planning estimates. Verify with an architect, fire engineer and cost consultant
   $('csv').onclick = () => {
     const q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
     const rows = [['tower', 'address', 'costar_id', 'score', 'passes', 'homes', 'cost_per_home', 'lightwell', 'daylit_pct', 'fire_screen', 'farthest_home_ft',
-      'height_m', 'floors', 'plate_w_ft', 'plate_d_ft', 'leased_pct', 'year_built', 'hidden_vacancy_flag', 'market_data']];
+      'height_m', 'floors', 'empty_floors', 'phase_one_floors', 'phase_one_homes', 'plate_w_ft', 'plate_d_ft', 'leased_pct', 'year_built', 'hidden_vacancy_flag', 'market_data']];
     for (const b of [...LW.B].sort((a, c) => c.score - a.score)) rows.push([b.id, b.real.market ? b.name : '', b.costarId || '', b.score, b.pass, b.plan.homes, Math.round(b.plan.cpu), b.plan.lw,
-      Math.round(b.plan.daylitFrac * 100), b.plan.safety.status, Math.round(b.plan.safety.travel), b.heightM, LW.eff(b, 'floors'), b.W, b.D,
+      Math.round(b.plan.daylitFrac * 100), b.plan.safety.status, Math.round(b.plan.safety.travel), b.heightM, LW.eff(b, 'floors'), b.vacantFloors.length, LW.phaseOne(b) ? LW.phaseOne(b).from + '-' + LW.phaseOne(b).to : '', LW.phaseOne(b) ? LW.phaseOne(b).homes : 0, b.W, b.D,
       Math.round(LW.eff(b, 'rep') * 100), LW.eff(b, 'year'), b.phantom,
       Object.keys(b.overrides).length ? 'user-corrected' : ['market', 'aerial', 'interior'].filter(k => b.real[k]).join('+') || 'simulated']);
     download('lightwell-houston-ranking.csv', rows.map(r => r.map(q).join(',')).join('\n'), 'text/csv');
@@ -256,20 +278,33 @@ _Planning estimates. Verify with an architect, fire engineer and cost consultant
   // ---------- view switch ----------
   async function switchView(name) {
     if (LW.view === LW.views[name]) return;
-    document.querySelectorAll('#views button').forEach(x => x.classList.toggle('on', x.dataset.v === name));
+    document.querySelectorAll('#views button[data-v]').forEach(x => x.classList.toggle('on', x.dataset.v === name));
     const prev = LW.view, next = LW.views[name];
     $('viewNote').style.display = 'none';
     if (name === 'g3d') {
       $('viewNote').style.display = 'block'; $('viewNote').textContent = 'Loading 3D…';
       try { await next.init(); }
-      catch (e) { $('viewNote').textContent = e.message; document.querySelectorAll('#views button').forEach(x => x.classList.toggle('on', x.dataset.v === 'map')); return; }
+      catch (e) { $('viewNote').textContent = e.message; document.querySelectorAll('#views button[data-v]').forEach(x => x.classList.toggle('on', x.dataset.v === 'map')); return; }
       $('viewNote').textContent = next.mode === 'google' ? 'Google Photorealistic 3D Tiles · coloured towers are Lightwell results'
         : (next.error || 'No Google key in config.js: showing OpenStreetMap buildings in 3D. Add a key for the photoreal city.');
     }
     prev.show(false); next.show(true); LW.view = next;
     prev.stopOrbit(); prev.select(null, LW.selected); LW.refresh(); next.select(LW.selected, null);
+    next.setFloors(LW.floorsOn);
     if (LW.selected) next.fly(LW.selected);
   }
-  document.querySelectorAll('#views button').forEach(x => x.onclick = () => switchView(x.dataset.v));
+  document.querySelectorAll('#views button[data-v]').forEach(x => x.onclick = () => switchView(x.dataset.v));
   LW.switchView = switchView;
+
+  // ---------- empty floors toggle ----------
+  LW.floorsOn = false;
+  $('floorsBtn').onclick = () => {
+    LW.floorsOn = !LW.floorsOn;
+    $('floorsBtn').classList.toggle('on', LW.floorsOn);
+    $('floorsLegend').style.display = LW.floorsOn ? 'flex' : 'none';
+    const empty = LW.B.reduce((s, b) => s + b.vacantFloors.length, 0), all = LW.B.reduce((s, b) => s + b.floors - 1, 0);
+    const real = LW.B.filter(b => b.real.floors).length;
+    $('floorsSum').textContent = `${fmt(empty)} of ${fmt(all)} office floors empty · ${real ? real + ' towers from CoStar, rest simulated' : 'simulated until CoStar data'}`;
+    LW.view.setFloors(LW.floorsOn);
+  };
 })();

@@ -36,6 +36,20 @@ def num(v, cast=float):
         return None
 
 
+def floors(spec: str) -> list[int] | None:
+    """'3-7;12;20-22' -> [3, 4, 5, 6, 7, 12, 20, 21, 22]. Empty -> None (unknown, not 'no vacancy')."""
+    if not spec:
+        return None
+    out = set()
+    for part in spec.replace(",", ";").split(";"):
+        part = part.strip()
+        if "-" in part:
+            a, b = (int(float(x)) for x in part.split("-", 1)); out.update(range(min(a, b), max(a, b) + 1))
+        elif part:
+            out.add(int(float(part)))
+    return sorted(out)
+
+
 def point_in_ring(x, y, ring) -> bool:
     inside = False
     for (x1, y1), (x2, y2) in zip(ring, ring[1:]):
@@ -95,6 +109,7 @@ def main():
             "costar_id": r["costar_id"], "address": r.get("address") or None, "owner": r.get("owner") or None,
             "leased": None if num(r.get("leased_pct")) is None else num(r.get("leased_pct")) / 100,
             "year": num(r.get("year_built"), int), "rba_sqft": num(r.get("rba_sqft"), int), "floors": num(r.get("floors"), int),
+            "vacant_floors": floors(r.get("vacant_floors", "")),
         }.items() if v is not None}
 
     orphans = []

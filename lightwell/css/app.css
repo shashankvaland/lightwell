@@ -86,3 +86,14 @@ button.sv{background:rgba(60,198,180,.16);border-color:var(--teal)}
 #svMsg b{color:var(--ink);font-size:15px}#svMsg span{max-width:440px}
 #svMsg code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px}
 @media (max-width:980px){#svBox{left:8px;right:8px;top:56px;bottom:46vh}}
+
+/* Empty floors view */
+#views .sep{width:1px;background:var(--line);margin:4px 2px}
+#views button#floorsBtn.on{background:rgba(245,185,66,.25);color:var(--gold)}
+#floorsLegend{position:fixed;top:58px;left:50%;transform:translateX(-50%);z-index:3;display:none;gap:12px;align-items:center;
+  font-size:12px;white-space:nowrap;max-width:calc(100vw - 700px);overflow:hidden;text-overflow:ellipsis;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:5px 10px}
+#floorsLegend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+#floorsLegend .muted{color:var(--muted)}
+.floorsRow{display:flex;gap:10px;align-items:flex-end;margin:8px 0;padding:8px;border-radius:8px;background:rgba(245,185,66,.06);border:1px solid rgba(245,185,66,.18)}
+.floorsRow svg{flex:none}
+.floorsRow .txt{font-size:12px}

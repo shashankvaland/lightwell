@@ -1,1 +1,1 @@
-costar_id,address,lat,lon,property_type,leased_pct,year_built,rba_sqft,floors,owner
+costar_id,address,lat,lon,property_type,leased_pct,year_built,rba_sqft,floors,owner,vacant_floors

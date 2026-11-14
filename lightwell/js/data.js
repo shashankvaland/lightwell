@@ -51,13 +51,34 @@
         W: Math.min(300, 10 * Math.round(r.W / 10)), D: Math.min(260, 10 * Math.round(r.D / 10)),
         irregular: fa / r.a < 0.8, footprint: Math.round(fa),
         floors, f2f: Math.round((heightM * FT / floors) * 2) / 2, year, rep, obs, scanned, core: null,
-        forceLW: null, overrides: {}, score: null, real: { market: false, aerial: false, interior: false },
+        forceLW: null, overrides: {}, score: null, real: { market: false, aerial: false, interior: false, floors: false },
       };
       if (real) applyReal(b, real);
+      // floor-by-floor vacancy: CoStar's available-space floors when imported, otherwise simulated from % leased
+      if (!b.real.floors) b.vacantFloors = simVacantFloors(b.floors, b.rep, mulberry(p.id % 100000 + 99));
       b.label = b.real.market ? b.name : b.id;   // real names only appear next to real market data
       B.push(b);
     }
     return B;
+  };
+
+  // Empty space in offices tends to come in blocks of whole floors (a tenant leaves, their floors go dark).
+  // Floor 1 is the lobby and never counted. Returns sorted floor numbers.
+  function simVacantFloors(n, rep, rnd) {
+    const usable = n - 1, v = new Set(); let need = Math.round((1 - rep) * usable), guard = 0;
+    while (need > 0 && guard++ < 60) {
+      const len = Math.min(need, 1 + Math.floor(rnd() * Math.max(2, usable / 3)));
+      const start = 2 + Math.floor(rnd() * Math.max(1, usable - len + 1));
+      for (let f = start; f < start + len && f <= n; f++) if (!v.has(f)) { v.add(f); need--; }
+    }
+    return [...v].sort((a, c) => a - c);
+  }
+  // Runs of consecutive empty floors, biggest first: [{ from, to, len }]
+  LW.emptyBlocks = function (b) {
+    const out = []; let s = null, prev = null;
+    for (const f of b.vacantFloors) { if (s !== null && f === prev + 1) prev = f; else { if (s !== null) out.push({ from: s, to: prev, len: prev - s + 1 }); s = prev = f; } }
+    if (s !== null) out.push({ from: s, to: prev, len: prev - s + 1 });
+    return out.sort((a, c) => c.len - a.len || a.from - c.from);
   };
 
   function applyReal(b, real) {
@@ -66,6 +87,9 @@
     if (real.leased != null) { b.rep = real.leased; b.real.market = true; }
     if (real.year != null) { b.year = real.year; b.real.market = true; }
     if (real.rba_sqft) b.rba = real.rba_sqft;
+    if (Array.isArray(real.vacant_floors)) {
+      b.vacantFloors = real.vacant_floors.filter(f => f >= 2 && f <= b.floors).sort((a, c) => a - c); b.real.floors = true;
+    }
     if (real.parking && real.parking.length) {
       const pk = [...real.parking].sort((a, c) => String(a.date).localeCompare(String(c.date)));
       b.obs = pk.map(x => x.pct); b.obsDates = pk.map(x => x.date); b.real.aerial = true;

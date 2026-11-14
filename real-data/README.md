@@ -31,6 +31,7 @@ It matches every row to a real OpenStreetMap footprint, prints a match report, a
 | rba_sqft | rentable building area | 850000 |
 | floors | stories (used if the map has no height) | 36 |
 | owner | owner name (goes into the memo) | |
+| vacant_floors | floors with available space (CoStar available-space listings), ranges allowed | 3-7;12;20-22 |
 
 **parking.csv** (Vexcel: count cars yourself, or run `backend/count_cars.py` on an aerial image)
 | column | meaning |

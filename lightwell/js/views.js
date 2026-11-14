@@ -40,6 +40,7 @@
       if (!this.ready) return;
       if (prev) this.map.setFeatureState({ source: 'bld', id: prev.osmId }, { sel: false });
       if (b) this.map.setFeatureState({ source: 'bld', id: b.osmId }, { sel: true });
+      this._floorsSel();
     },
     fly(b) { if (this.ready) this.map.flyTo({ center: b.center, zoom: 16.6, pitch: 62, bearing: this.map.getBearing() + 25, speed: 0.8 }); },
     overview() { if (this.ready) this.map.easeTo({ zoom: 14.8, pitch: 55, bearing: this.map.getBearing() - 20, duration: 1500 }); },
@@ -63,6 +64,44 @@
     },
     stopOrbit() { if (this._stopOrbit) { this._stopOrbit(); this._stopOrbit = null; } },
     canStreet: false,
+
+    // ---- empty floors: every candidate tower drawn as stacked floor slabs ----
+    _floorsGeo() {
+      const feats = [];
+      for (const b of LW.B) {
+        const fh = b.heightM / b.floors, empty = new Set(b.vacantFloors);
+        for (let f = 1; f <= b.floors; f++) feats.push({ type: 'Feature', properties: { bidx: b.idx, empty: empty.has(f),
+          base: (f - 1) * fh, top: f * fh - Math.min(0.8, fh * 0.2) }, geometry: { type: 'Polygon', coordinates: [b.ring] } });
+      }
+      return { type: 'FeatureCollection', features: feats };
+    },
+    setFloors(on) {
+      if (!this.ready) return; const map = this.map;
+      if (on && !map.getSource('floors')) {
+        map.addSource('floors', { type: 'geojson', data: this._floorsGeo() });
+        const paint = (sel, other) => ({ 'fill-extrusion-color': ['case', ['==', ['get', 'bidx'], -1], sel, other],
+          'fill-extrusion-base': ['get', 'base'], 'fill-extrusion-height': ['get', 'top'] });
+        map.addLayer({ id: 'floorsLeased', type: 'fill-extrusion', source: 'floors', filter: ['!', ['get', 'empty']],
+          paint: { ...paint('#9fb2d6', '#3a4766'), 'fill-extrusion-opacity': 0.35 } }, 'flags');
+        map.addLayer({ id: 'floorsEmpty', type: 'fill-extrusion', source: 'floors', filter: ['get', 'empty'],
+          paint: { ...paint('#fff0b8', '#f5b942'), 'fill-extrusion-opacity': 0.95 } }, 'flags');
+        for (const id of ['floorsLeased', 'floorsEmpty']) {
+          map.on('click', id, e => LW.onSelect(LW.B[e.features[0].properties.bidx], false));
+          map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer');
+          map.on('mouseleave', id, () => map.getCanvas().style.cursor = '');
+        }
+      }
+      if (!map.getSource('floors')) return;
+      for (const id of ['floorsLeased', 'floorsEmpty']) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+      map.setFilter('bld', on ? ['!', ['get', 'cand']] : null);   // hide the solid towers while floors are shown
+      this._floorsSel();
+    },
+    _floorsSel() {   // brighten the selected tower's floors
+      if (!this.map.getLayer('floorsEmpty')) return;
+      const i = LW.selected ? LW.selected.idx : -1;
+      this.map.setPaintProperty('floorsEmpty', 'fill-extrusion-color', ['case', ['==', ['get', 'bidx'], i], '#fff0b8', '#f5b942']);
+      this.map.setPaintProperty('floorsLeased', 'fill-extrusion-color', ['case', ['==', ['get', 'bidx'], i], '#9fb2d6', '#3a4766']);
+    },
   };
 
   // ---------------- CesiumJS (Google Photorealistic 3D Tiles) ----------------
@@ -109,8 +148,8 @@
       const h = new Cesium.ScreenSpaceEventHandler(v.scene.canvas);
       h.setInputAction(ev => {
         const p = v.scene.pick(ev.position);
-        const id = p && typeof p.id === 'string' ? p.id : null;
-        LW.onSelect(id && id.startsWith('b:') ? LW.B[+id.slice(2)] : null, false);
+        const id = p && typeof p.id === 'string' ? p.id : null;   // 'b:<idx>' tower, 'f:<idx>:<floor>' floor slab
+        LW.onSelect(id && /^[bf]:/.test(id) ? LW.B[+id.split(':')[1]] : null, false);
       }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
       v.scene.postRender.addEventListener(() => this._flush());
       this.ready = true;
@@ -168,6 +207,32 @@
           disableDepthTestDistance: Number.POSITIVE_INFINITY } });
     },
     show(on) { document.getElementById('g3d').style.visibility = on ? 'visible' : 'hidden'; if (!on) this.stopOrbit(); },
+
+    // ---- empty floors ----
+    // Google mode: paint only the empty floors onto the real photoreal towers (a classification slice per floor).
+    // Fallback mode: stacked floor slabs, empty floors gold and leased floors faded.
+    setFloors(on) {
+      if (!this.ready) return;
+      if (on && !this.floorsPrim) {
+        const google = this.mode === 'google', insts = [];
+        const vf = google ? Cesium.VertexFormat.POSITION_ONLY : Cesium.PerInstanceColorAppearance.VERTEX_FORMAT;
+        const gold = Cesium.Color.fromCssColorString('#f5b942'), slate = Cesium.Color.fromCssColorString('#3a4766');
+        for (const b of LW.B) {
+          const fh = b.heightM / b.floors, empty = new Set(b.vacantFloors);
+          for (let f = 1; f <= b.floors; f++) {
+            const isEmpty = empty.has(f); if (google && !isEmpty) continue;
+            const lo = this.h0 + (f - 1) * fh, hi = this.h0 + f * fh - Math.min(0.8, fh * 0.2);
+            insts.push(this._poly(b.ring, lo, hi, isEmpty ? gold.withAlpha(google ? 0.6 : 0.95) : slate.withAlpha(0.35), `f:${b.idx}:${f}`, vf));
+          }
+        }
+        this.floorsPrim = this.viewer.scene.primitives.add(google
+          ? new Cesium.ClassificationPrimitive({ asynchronous: false, classificationType: Cesium.ClassificationType.CESIUM_3D_TILE, geometryInstances: insts })
+          : new Cesium.Primitive({ asynchronous: false, geometryInstances: insts, appearance: new Cesium.PerInstanceColorAppearance({ translucent: true, flat: false }) }));
+      }
+      if (this.floorsPrim) this.floorsPrim.show = on;
+      if (this.prim) this.prim.show = !on;
+      this.viewer.scene.requestRender();
+    },
 
     // ---- camera modes ----
     _center(b, frac) { return Cesium.Cartesian3.fromDegrees(b.center[0], b.center[1], this.h0 + b.heightM * frac); },
