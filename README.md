@@ -30,21 +30,26 @@ attacks the plan before you see it. The app opens with a short, sourced screen o
    on a 3D map or Google's photoreal 3D city.
 4. **Daylight test on every floor:** homes only where a bedroom is within about 30 ft of a window.
 5. **Cut a lightwell:** one click carves a courtyard through a deep floor and re-runs homes, cost and score.
-6. **Preliminary fire screen:** estimated travel from the farthest home to a stair, stair separation, sprinkler retrofit.
+6. **Daylight X-ray:** checks every window wall, floor by floor, against the real neighbouring buildings, and lightwell
+   courts against the tower's own height. Homes whose windows face a nearby building lower the daylight score (or, with
+   *Strict daylight*, don't count at all). The **Daylight** view colours every floor by how much sky its windows see, red
+   lines point to the blocking buildings, and Photoreal 3D plays real sun shadows for any hour on Dec 21 or Jun 21.
+   A screening check, not a daylight study.
+7. **Preliminary fire screen:** estimated travel from the farthest home to a stair, stair separation, sprinkler retrofit.
    It says what is measured, what is assumed (stair locations) and what is not verified. It never calls a tower fire-safe.
-7. **Occupancy discrepancies:** reported occupancy compared with cars counted in aerial images, as observations to
+8. **Occupancy discrepancies:** reported occupancy compared with cars counted in aerial images, as observations to
    investigate.
-8. **Review and replan:** the agent tests a worse plausible value for every estimated, assumed or simulated input on the
+9. **Review and replan:** the agent tests a worse plausible value for every estimated, assumed or simulated input on the
    shortlist. If one would change the decision, it pauses and asks you for that measurement, then re-ranks and explains
    what changed (*"HOU-53 now fails: floor-to-floor under 10.5 ft. New leader: HOU-34"*).
-9. **Texas fast-track screen (SB 840 / SB 2477):** floors needed for 65% homes, floors empty now, building age. A screen,
+10. **Texas fast-track screen (SB 840 / SB 2477):** floors needed for 65% homes, floors empty now, building age. A screen,
    not legal advice.
-10. **Tenant moves:** reads tenants and leases (CoStar records when imported, simulated otherwise), picks the tenants whose
+11. **Tenant moves:** reads tenants and leases (CoStar records when imported, simulated otherwise), picks the tenants whose
     leases end soonest, moves each into the nearest tower with room (preferring towers that are poor conversion candidates,
     so they stay offices and fill up), and prices the incentives. Gold arcs on the map show every move.
-11. **Red team:** attacks the move plan (long leases, far moves, receivers that are themselves good conversions, unverified
+12. **Red team:** attacks the move plan (long leases, far moves, receivers that are themselves good conversions, unverified
     age, simulated data). If the plan is weak, the planner tries the next tower.
-12. **Human in the loop:** correct any value, then approve the memo the agent reviewed. The memo is marked *not
+13. **Human in the loop:** correct any value, then approve the memo the agent reviewed. The memo is marked *not
    reviewed* as soon as the brief, an assumption, a correction or the lightwell choice changes. Export a portfolio memo
    and a CSV with a source column per field.
 
@@ -52,6 +57,7 @@ attacks the plan before you see it. The app opens with a short, sourced screen o
 |---|---|
 | Ranked 3D map coloured by conversion score | Map / Photoreal 3D toggle |
 | Floor-plate test-fit with homes, core, lightwell and escape route | Floor plate panel |
+| Daylight X-ray: floors coloured by how much sky their windows see, lines to the blocking buildings, sun shadows | Daylight toggle · Photoreal 3D sun bar |
 | Live constraints (window distance, cost cap, lightwell on/off) | Left panel |
 | Editable assumptions (cost, carbon, travel limit) | Left panel → Assumptions |
 | Source tag on every **field**: COSTAR, VEXCEL, MATTERPORT, OSM, ESTIMATE, ASSUMED, SIMULATED, MISSING, YOU | Building card |
@@ -108,6 +114,14 @@ facing the building. Without the key it offers the 3D street-level view instead.
 `config.js` is git-ignored, so keys never reach the repo. Without a key, the Photoreal button shows the OSM
 buildings in 3D.
 
+**5. Daylight X-ray data (already built)**
+`lightwell/data/daylight.js` and `daylight.json` are committed (derived from the public OSM data). Rebuild them after
+changing the building GeoJSON, or to use measured heights:
+```bash
+python backend/daylight.py                                   # OpenStreetMap heights
+python backend/daylight.py --heights real-data/heights.csv   # columns osm_id,height_m (e.g. Vexcel); tagged VEXCEL
+```
+
 ## Adding real data (CoStar, Vexcel, Matterport)
 
 Save API results as the three CSVs described in [real-data/README.md](real-data/README.md), then run:
@@ -129,6 +143,7 @@ The first-hours plan for the hackathon is in [EVENT_DAY.md](EVENT_DAY.md). Real 
 | Footprints, heights, floor-plate sizes (OpenStreetMap) | Occupancy, leases, year built (CoStar) |
 | Street map (OpenFreeMap) | Parking counts (Vexcel) |
 | Google photoreal city (with your key) | Interior scans: core, floor-to-floor (Matterport). Until then cores are ASSUMED and floor-to-floor is an ESTIMATE |
+| Neighbour heights for Daylight X-ray (OpenStreetMap, 231 buildings) | 989 of 1,220 footprints have no OSM height: drawn at 8 m and tagged ESTIMATE until Vexcel heights are imported |
 
 Real building names are hidden (towers show as HOU-01, HOU-02...) until real market data is loaded, so an invented
 number is never attached to a real, named building. An occupancy dot is an observation to investigate, never an accusation.
@@ -137,7 +152,7 @@ number is never attached to a real, named building. An occupancy dot is an obser
 
 ```
  You ask ──► brief ──► Planner (deepagents) ──► market-analyst ──► CoStar records, Vexcel counts, occupancy discrepancies
-                               │             └─► feasibility-engineer ──► floor plates, daylight test, lightwell, cost, fire screen
+                               │             └─► feasibility-engineer ──► floor plates, daylight test, lightwell, cost, fire screen, daylight X-ray
                                ├─► review_evidence ──► request_measurement (you answer) ──► re-rank, explain the change
                                ├─► policy-analyst ──► Texas 65% fast-track per tower
                                ├─► deal-maker ──► tenants + leases ──► tenant moves, incentive cost, homes unlocked
@@ -152,6 +167,8 @@ number is never attached to a real, named building. An occupancy dot is an obser
   areas use the geometric union. With a lightwell, two new stair cores are assumed at opposite corners of the courtyard.
 - The backend returns the reviewed numbers and any corrections; the page applies them and the memo renders from them.
 - Score = daylight share 30% + vacancy 26% + cost per home 20% + ceiling height 6% + building age 8% + fire screen 10%.
+  With Daylight X-ray on (the default), only homes whose windows see the sky count toward the daylight share; switch
+  *Check daylight from neighbours* off in the brief and every number equals the plain window-distance test.
 - A tower passes the brief when it is under the cost cap, has the minimum homes, has no likely fire blocker, has
   floor-to-floor of at least 10.5 ft, and has any real data the brief requires. The card says why a tower doesn't pass.
 - Cost and carbon are planning estimates and are editable in the app: $255/sq ft conversion, $420/sq ft lightwell
@@ -171,10 +188,12 @@ lightwell/              the app (open lightwell/index.html)
   config.example.js     copy to config.js for your keys
   consult.js            what the business we consulted asked for (Peri track); feeds the checklist and memo
   data/                 downtown Houston buildings (GeoJSON + .js copy for file://)
+  data/daylight.js/.json  Daylight X-ray sky profiles per tower wall (from backend/daylight.py)
 backend/
   agent.py              deepagents planner, sub-agents and tools
   engine.py             Python copy of engine.js
   shuffle.py            Python copy of shuffle.js
+  daylight.py           Daylight X-ray precompute: neighbouring buildings seen from every wall
   app.py                FastAPI server streaming agent steps (SSE)
   import_data.py        joins real-data/*.csv to the map
   count_cars.py         Claude vision car counter for aerial images
@@ -196,7 +215,9 @@ Amazon *Best Practical AI Innovation* · Peri *Forward Deployed* · Arlequin *AI
 Lightwell is a screening tool: it says where to look first. Daylight distances, fire rules and costs vary by city
 and building; an architect, fire engineer and cost consultant make the final call. The fire screen is an estimate from
 the plate and core rectangle (stairs and corridors are assumed), and an occupancy discrepancy is never evidence of
-wrongdoing.
+wrongdoing. Daylight X-ray is a screening check with an angle rule (after UK BRE daylight guidance), not a daylight
+study: it ignores glazing, reflections, trees and anything not in the OSM footprints, and buildings without an OSM
+height are drawn at 8 m.
 
 ## Credits
 

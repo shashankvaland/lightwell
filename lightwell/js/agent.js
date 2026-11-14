@@ -6,10 +6,10 @@
   const LW = window.LW, $ = id => document.getElementById(id);
   const WHO = { Planner: '#f5b942', Map: '#57c3bd', CoStar: '#b48ae0', Vexcel: '#57c3bd', Matterport: '#8fb0ff',
     Feasibility: '#e0b35a', Safety: '#ff9f6b', Forensics: '#ef8796', Review: '#c7cdda', Agent: '#f5b942', Tool: '#8f9ab0', You: '#5fd38a',
-    Policy: '#7fd1ff', Deals: '#5fd38a', 'Red team': '#ef5d6f' };
+    Policy: '#7fd1ff', Deals: '#5fd38a', 'Red team': '#ef5d6f', Daylight: '#ffd27a' };
   // The agent team strip: which sub-agent is working right now.
   const TEAM = { Planner: 'planner', Review: 'planner', Map: 'planner', CoStar: 'market', Vexcel: 'market', Forensics: 'market',
-    Matterport: 'feas', Feasibility: 'feas', Safety: 'feas', Policy: 'policy', Deals: 'deals', 'Red team': 'red' };
+    Matterport: 'feas', Feasibility: 'feas', Safety: 'feas', Policy: 'policy', Deals: 'deals', 'Red team': 'red', Daylight: 'feas' };
   function pulse(who) {
     const el = document.querySelector(`#team [data-a="${TEAM[who]}"]`); if (!el) return;
     document.querySelectorAll('#team .on').forEach(x => x.classList.remove('on'));
@@ -118,6 +118,16 @@
     LW.log('Feasibility', `Ran the ${S.u} ft daylight test on every floor plate. ${costOK.length} towers fit under the cap with ${S.minHomes}+ homes; lightwells rescue ${costOK.filter(b => b.plan.lw).length}.`); await sleep(700);
     const fails = costOK.filter(b => b.plan.safety.status === 'fail'), checks = B.filter(b => b.pass && b.plan.safety.status === 'check');
     LW.log('Safety', `Preliminary fire screen (estimates, not a code review): ${fails.length} likely blockers among cost-passing towers; ${checks.length} need design work.`); await sleep(700);
+    // Daylight X-ray: the passing tower whose windows face neighbouring buildings the most
+    const dayAll = B.filter(b => b.plan.day), dayPass = dayAll.filter(b => b.pass), share = b => b.plan.day.dim / Math.max(1, b.plan.day.open + b.plan.day.dim);
+    if (S.neighbours === false) LW.log('Daylight', 'Daylight from neighbours is switched off in the brief: daylight uses the window-distance test only.');
+    else if (!dayAll.length) LW.log('Daylight', 'No neighbour data loaded (run backend/daylight.py): daylight uses the window-distance test only.');
+    else if (!dayPass.length) LW.log('Daylight', `Checked every tower against its neighbours (limit ${dayAll[0].plan.day.lim}°): ${LW.fmt(dayAll.reduce((s, b) => s + b.plan.day.dim, 0))} of `
+      + `${LW.fmt(dayAll.reduce((s, b) => s + b.plan.day.open + b.plan.day.dim, 0))} homes face a nearby building.`);
+    else { const w = dayPass.reduce((a, b) => share(b) > share(a) ? b : a), d = w.plan.day;
+      LW.log('Daylight', `Checked the passing towers against their neighbours (limit ${d.lim}°). ${LW.esc(w.label)}: ${LW.fmt(d.dim)} of ${LW.fmt(d.open + d.dim)} homes face a nearby building`
+        + `${d.strict ? ' and are not counted (strict)' : '; they lower its daylight score'}.`); }
+    await sleep(600);
     LW.flagsShown = true; LW.refresh();
     const fl = B.filter(b => b.phantom), flReal = fl.filter(b => b.real.market && b.real.aerial).length;
     LW.log('Forensics', S.useParking ? `${fl.length} occupancy discrepancies to investigate (red dots), ${flReal ? flReal + ' on real data' : 'all on simulated data'}.` : 'Parking ignored by the brief: no occupancy comparison.'); await sleep(700);
