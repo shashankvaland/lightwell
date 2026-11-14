@@ -136,6 +136,21 @@
 
   LW.phaseOne = b => { const big = LW.emptyBlocks(b)[0]; return big ? { ...big, homes: big.len * b.plan.perFloor } : null; };
 
+  // Daylight X-ray: which wall is dim and what blocks it. A blocker is named by its candidate label or its height, never its OSM name.
+  const wallName = (b, k) => k === 'court' ? 'lightwell court' : LW.compass(b.day.face[k]) + '-facing wall';
+  const an = n => /^(8|11|18|8\d|8\d\d)$/.test(String(n)) ? 'an' : 'a';   // "an 8 m building", "a 176 m building"
+  const blkLabel = blk => { if (!blk) return 'a nearby building'; const c = LW.byOsm.get(blk.osm), h = Math.round(blk.h);
+    return (c ? `${esc(c.label)} (${h} m)` : `${an(h)} ${h} m building`) + (blk.d <= 1 ? ' on a shared wall' : ` ${blk.d} ft away`); };
+  const worstWall = d => Object.entries(d.walls).sort((x, y) => y[1].homes - x[1].homes)[0];
+  function dayRow(b) {
+    const d = b.plan.day;
+    if (!d) return row(b, 'daylight', LW.S.neighbours === false ? '<b>Daylight from neighbours:</b> not checked (switched off in the brief).' : '<b>Daylight from neighbours:</b> no data for this tower.');
+    if (!d.dim) return row(b, 'daylight', `<b>Daylight from neighbours:</b> every home sees the sky at ${d.lim}°.`);
+    const [k, w] = worstWall(d);
+    return row(b, 'daylight', `<b>Daylight from neighbours:</b> ${fmt(d.dim)} of ${fmt(d.open + d.dim)} homes face a nearby building (${wallName(b, k)}, floors ${w.from}–${w.to}). `
+      + (d.strict ? 'Strict: not counted.' : 'They lower the daylight score.'));
+  }
+
   function renderCard(b) {
     const p = b.plan, s = p.safety, col = LW.hex(LW.scoreRGB(b.score ?? 0)), A = LW.A, f2f = LW.eff(b, 'f2f'), rep = LW.eff(b, 'rep'), year = LW.eff(b, 'year');
     const layers = ['market', 'aerial', 'interior'].filter(k => b.real[k]), obs = b.obs || [];
@@ -151,7 +166,7 @@
       ${b.pass ? '' : `<div class="why">Doesn't pass the brief: ${esc(b.why.join(' · '))}</div>`}
       <div class="big"><div><b>${fmt(p.homes)}</b><span>homes (${p.mix[0]} studio · ${p.mix[1]} 1-bed · ${p.mix[2]} 2-bed)</span></div>
         <div><b>${money(p.cpu)}</b><span>per home vs ~${money(A.newBuildPerHome)} new build</span></div>
-        <div><b>${pct(p.daylitFrac)}</b><span>of usable floor is homes within ${LW.S.u} ft of a window</span></div>
+        <div><b>${pct(p.daylitFrac)}</b><span>of usable floor is homes within ${LW.S.u} ft of a window${p.day ? ' that sees the sky' : ''}</span></div>
         <div><b>${fmt(p.carbon)} t</b><span>CO₂e embodied carbon avoided</span></div></div>
       ${row(b, 'floors', `Height ${b.heightM} m · ${LW.eff(b, 'floors')} floors`)}
       ${row(b, 'plate', `Floor plate ${LW.srcOf(b, 'plate') === 'MATTERPORT' ? '' : 'about '}${b.W} × ${b.D} ft${b.irregular ? ' (irregular footprint, simplified)' : ''}`)}
@@ -162,6 +177,7 @@
       ${row(b, 'obs', parkTxt)}
       ${row(b, null, `Vacancy signal ${pct(b.vac)} (from ${b.vacBasis})`, b.vacBasis === 'assumed' ? 'ASSUMED' : 'FEASIBILITY')}
       ${row(b, null, p.lw ? `Lightwell cut: ${p.perFloor} homes per floor` : `${p.perFloor} homes per floor along the window walls`, 'FEASIBILITY')}
+      ${dayRow(b)}
       ${floorsRow(b)}
       ${moveSection(b)}
       <div class="find"><button class="tag t-safe ${s.status}" data-ev="fire">FIRE · PRELIM</button><span><b>${LW.SAFE_LABEL[s.status]}.</b> Farthest home about ${Math.round(s.travel)} ft from a stair (estimate).${s.notes.length ? '<br>' + s.notes.map(esc).join('<br>') : ''}</span></div>
@@ -211,7 +227,7 @@
 
   // ---------- evidence drawer ----------
   const kv = rows => `<table class="kv">${rows.filter(r => r[1] != null && r[1] !== '').map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`;
-  const FIELD = { vacant: 'Empty floors', floors: 'Floors and height', plate: 'Floor plate', core: 'Core', f2f: 'Floor-to-floor height', rep: 'Percent leased', year: 'Year built', obs: 'Parking occupancy', fire: 'Preliminary fire screen', texas: 'Texas conversion fast-track', '': 'Calculated value' };
+  const FIELD = { vacant: 'Empty floors', floors: 'Floors and height', plate: 'Floor plate', core: 'Core', f2f: 'Floor-to-floor height', rep: 'Percent leased', year: 'Year built', obs: 'Parking occupancy', fire: 'Preliminary fire screen', texas: 'Texas conversion fast-track', daylight: 'Daylight from neighbours', '': 'Calculated value' };
   const SRC_TXT = {
     OSM: 'From the OpenStreetMap building record (footprint, height or levels tags).',
     ESTIMATE: 'Estimated by Lightwell from other values; not measured.',
@@ -261,6 +277,24 @@
       parts.push('<h4>OpenStreetMap</h4>' + kv([['OSM way', b.osmId], ['Height', b.heightM + ' m'], ['Footprint', fmt(b.footprint) + ' sq ft'], ['Simplified plate', `${b.W} × ${b.D} ft (minimum rectangle)`]]));
       if (k === 'f2f' && LW.srcOf(b, 'f2f') === 'ESTIMATE') parts.push(`<p>Estimate: height ÷ ${LW.srcOf(b, 'floors') === 'ESTIMATE' ? 'a floor count that was itself estimated from height (3.9 m a floor), so this is close to an assumption' : 'floor count'}. A scan or section drawing replaces it.</p>`);
       if (k === 'core' && LW.srcOf(b, 'core') === 'ASSUMED') parts.push('<p>Assumed: a central core about 26% of the plate width and 20% of its depth (at least 40 × 30 ft). The real core can be larger in older towers.</p>');
+    }
+    if (k === 'daylight') {
+      const d = p.day;
+      parts.push(`<p><b>A screening check, not a daylight study.</b> A home counts as seeing the sky when the obstruction angle at eye height on its floor is at most ${d ? d.lim : LW.S.dayLim}° (after UK BRE daylight guidance).
+        Every window wall is checked floor by floor against the neighbouring buildings (a fan of rays every ~20 ft, up to 300 ft); a lightwell court is checked against the tower itself across the court.
+        Neighbour heights come from OpenStreetMap; buildings without a height are drawn at 8 m (ESTIMATE). Glazing, reflections and trees are not modelled.</p>`);
+      if (!d) parts.push(`<p>${LW.S.neighbours === false ? 'Switched off in the brief: daylight uses the window-distance test only.' : 'No neighbour data for this tower (run backend/daylight.py).'}</p>`);
+      else {
+        parts.push(`<p>${fmt(d.dim)} of ${fmt(d.open + d.dim)} homes face a nearby building${d.strict ? ' and are not counted (strict daylight).' : ': they still count as homes but not as daylit, which lowers the score.'}</p>`);
+        const W = Object.entries(d.walls).sort((x, y) => y[1].homes - x[1].homes);
+        if (W.length) parts.push('<table class="kv grid"><tr><td>Wall</td><td>Dim floors</td><td>Dim homes</td><td>Blocked by</td><td>Height source</td></tr>'
+          + W.map(([w, x]) => { const blk = w === 'court' ? null : b.day.blk[w];
+            return `<tr><td>${w === 'court' ? 'lightwell court' : LW.compass(b.day.face[w]) + '-facing'}${w !== 'court' && b.day.edge[w] ? ' (faces the edge of our data)' : ''}</td><td>${x.from}–${x.to}</td><td>${fmt(x.homes)}</td>`
+              + `<td>${w === 'court' ? 'the tower itself across the court' : blkLabel(blk)}</td><td>${blk ? `<span class="tag ${LW.SRC_CLASS[blk.src] || 't-est'}">${esc(blk.src)}</span>` : '–'}</td></tr>`; }).join('') + '</table>'
+          + '<p class="note">Blocked by: the building that blocks most of the wall\'s sight lines at the lowest home floor. Taller buildings further away can dim higher floors.</p>');
+        const open = ['n', 's', 'e', 'w'].filter(w => !d.walls[w] && p.L.units.some(un => !un.court && un.win === w));
+        if (open.length) parts.push(`<p>Open to the sky at ${d.lim}° on every floor: ${open.map(w => wallName(b, w) + (b.day.edge[w] ? ' (faces the edge of our data, so this may be optimistic)' : '')).join('; ')}.</p>`);
+      }
     }
     if (k === 'fire') parts.push(`<p><b>${LW.SAFE_LABEL[sf.status]}.</b> This is an estimate from the plate and the core rectangle. Stair locations and corridors are not known.</p>`
       + '<h4>Measured</h4><ul>' + sf.measured.map(x => `<li>${esc(x)} (${esc(LW.srcOf(b, 'plate'))})</li>`).join('') + '</ul>'
