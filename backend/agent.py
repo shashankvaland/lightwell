@@ -20,7 +20,8 @@ from engine import (SAFE_LABEL, Building, LAYER_NAME, WHATIF, analyze, current_v
 
 MODEL = os.environ.get("LIGHTWELL_MODEL", "anthropic:claude-opus-5-5")
 ASK_TIMEOUT_S = int(os.environ.get("LIGHTWELL_ASK_TIMEOUT", "300"))
-FIELDS = ("id", "W", "D", "heightM", "floors", "f2f", "year", "rep", "obs", "scanned", "core", "forceLW", "real", "src", "vacantFloors", "center", "tenants", "day")
+FIELDS = ("id", "W", "D", "heightM", "floors", "f2f", "year", "rep", "obs", "scanned", "core", "forceLW", "real", "src", "vacantFloors", "center", "tenants", "day",
+          "sprinklers", "converted")
 BRIEF_KEYS = ("u", "cap", "allowLW", "minHomes", "useParking", "require", "neighbours", "dayLim", "dayStrict")
 
 
@@ -326,7 +327,10 @@ def make_tools(s: Session):
         if ts is None:
             return json.dumps({"error": f"No floor-by-floor data for {b.id}."})
         src = "CoStar records" if ts and all(x.get("src") == "COSTAR" for x in ts) else "<i>simulated</i>"
-        s.emit("CoStar", f"{b.id}: {len(ts)} tenants ({src}); {sum(1 for x in ts if x['lease_end'] <= POLICY['year'] + 1)} leases end by {POLICY['year'] + 1}.", ids=[b.id])
+        unk = sum(1 for x in ts if x.get("lease_end") is None)
+        s.emit("CoStar", f"{b.id}: {len(ts)} tenants ({src}); "
+               f"{sum(1 for x in ts if x.get('lease_end') is not None and x['lease_end'] <= POLICY['year'] + 1)} leases end by {POLICY['year'] + 1}"
+               + (f"; {unk} with no lease end on record" if unk else "") + ".", ids=[b.id])
         return json.dumps(ts)
 
     def plan_tenant_moves(tower_id: str, goal: str = "fast") -> str:

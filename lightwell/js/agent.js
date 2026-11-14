@@ -171,7 +171,8 @@
       const ft = LW.fastTrack(b); if (ft.status === 'unknown') continue;
       if (ft.status !== 'shuffle') return b.id;
       const ts = LW.tenantsOf(b);
-      LW.log('CoStar', `${b.id}: ${ts.length} tenants (${ts.every(x => x.src === 'COSTAR') ? 'CoStar records' : '<i>simulated</i>'}); ${ts.filter(x => x.lease_end <= LW.POLICY.year + 1).length} leases end by ${LW.POLICY.year + 1}.`);
+      LW.log('CoStar', `${b.id}: ${ts.length} tenants (${ts.every(x => x.src === 'COSTAR') ? 'CoStar records' : '<i>simulated</i>'}); ${ts.filter(x => x.lease_end != null && x.lease_end <= LW.POLICY.year + 1).length} leases end by ${LW.POLICY.year + 1}`
+        + `${ts.some(x => x.lease_end == null) ? `; ${ts.filter(x => x.lease_end == null).length} with no lease end on record` : ''}.`);
       const plan = LW.planMoves(b, LW.B, 'fast'), ch = LW.challengePlan(b, plan, LW.B);
       LW.showMoves(plan, null); await sleep(500);
       LW.log('Deals', `${b.id}: move ${plan.moves.length} tenants (${plan.freed_floors} floors) into ${plan.receivers.join(', ') || 'no tower'} → ${LW.fmt(plan.homes_after)} homes can start now (+${LW.fmt(plan.homes_gained)}); `
@@ -193,7 +194,8 @@
     return { prompt: $('prompt').value, constraints: { ...LW.S }, assumptions: { ...LW.A }, key: LW.inputsKey(),
       buildings: LW.B.map(b => ({ id: b.id, W: b.W, D: b.D, heightM: b.heightM, floors: LW.eff(b, 'floors'), f2f: LW.eff(b, 'f2f'),
         year: LW.eff(b, 'year'), rep: LW.eff(b, 'rep'), obs: b.obs || [], scanned: b.scanned, core: LW.eff(b, 'core'),
-        forceLW: b.forceLW, real: b.real, vacantFloors: b.vacantFloors || [], center: b.center, tenants: Array.isArray(b.tenants) ? b.tenants : null, src: Object.fromEntries(f.map(k => [k, LW.srcOf(b, k)])), day: b.day })) };
+        forceLW: b.forceLW, real: b.real, vacantFloors: b.vacantFloors || [], center: b.center, tenants: Array.isArray(b.tenants) ? b.tenants : null, src: Object.fromEntries(f.map(k => [k, LW.srcOf(b, k)])), day: b.day,
+        sprinklers: b.sprinklers ?? null, converted: b.converted ?? null })) };
   }
   async function runBackend() {
     const url = backendUrl();

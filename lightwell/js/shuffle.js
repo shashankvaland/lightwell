@@ -54,10 +54,15 @@
     goal = goal || 'fast';
     const ft = LW.fastTrack(t), tenants = LW.tenantsOf(t), A = LW.A;
     if (!tenants || ft.status === 'unknown') return null;
-    const want = goal === 'empty' ? tenants.reduce((s, x) => s + x.floors.length, 0) : ft.short;
-    const order = [...tenants].sort((a, c) => a.lease_end - c.lease_end || a.floors.length - c.floors.length || a.floors[0] - c.floors[0]);
-    const pick = []; let freed = 0;
-    for (const x of order) { if (freed >= want) break; pick.push(x); freed += x.floors.length; }
+    // Real CoStar floors can be shared by several tenants: a floor is freed only when every tenant on it moves.
+    const ts = tenants.filter(x => x.floors && x.floors.length), onFloor = new Map();
+    for (const x of ts) for (const f of x.floors) onFloor.set(f, (onFloor.get(f) || 0) + 1);
+    const want = goal === 'empty' ? onFloor.size : ft.short;
+    // leases that end soonest first; a lease end that is not on record (null) goes last
+    const key = x => [x.lease_end == null ? 1 : 0, x.lease_end == null ? 0 : x.lease_end, x.floors.length, x.floors[0]];
+    const order = [...ts].sort((a, c) => { const p = key(a), q = key(c); for (let i = 0; i < 4; i++) if (p[i] !== q[i]) return p[i] - q[i]; return 0; });
+    const left = new Map(onFloor), pick = []; let freed = 0;
+    for (const x of order) { if (freed >= want) break; pick.push(x); for (const f of x.floors) { left.set(f, left.get(f) - 1); if (!left.get(f)) freed++; } }
     // receiving towers: known empty space, not the target; their remaining capacity in sq ft
     const cap = new Map();
     for (const r of B) if (r !== t && LW.srcOf(r, 'vacant') !== 'MISSING' && (r.vacantFloors || []).length)
@@ -66,13 +71,14 @@
     for (const x of pick) {
       const opts = [...cap.keys()].filter(r => cap.get(r) >= x.sqft)
         .map(r => ({ r, d: distM(t, r) })).sort((a, c) => (a.r.pass ? 1 : 0) - (c.r.pass ? 1 : 0) || a.d - c.d || a.r.idx - c.r.idx);
-      const yrs = Math.max(0, x.lease_end - P.year - 1), cost = x.sqft * (A.moveCostSqft + A.buyoutSqftYr * yrs);
+      const yrs = x.lease_end == null ? A.unknownLeaseYrs : Math.max(0, x.lease_end - P.year - 1), cost = x.sqft * (A.moveCostSqft + A.buyoutSqftYr * yrs);
       if (!opts.length) { unplaced.push({ tenant: x.name, sqft: x.sqft, floors: x.floors }); continue; }
       const o = opts[0]; cap.set(o.r, cap.get(o.r) - x.sqft);
       moves.push({ tenant: x.name, floors: x.floors, sqft: x.sqft, lease_end: x.lease_end, src: x.src, from: t.id, to: o.r.id,
         to_passes: !!o.r.pass, dist_m: Math.round(o.d), cost: Math.round(cost), buyout_years: yrs });
     }
-    const movedFloors = moves.reduce((s, m) => s + m.floors.length, 0), per = t.plan ? t.plan.perFloor : 0;
+    const done = new Map(); for (const m of moves) for (const f of m.floors) done.set(f, (done.get(f) || 0) + 1);
+    const movedFloors = [...done].filter(([f, n]) => n === onFloor.get(f)).length, per = t.plan ? t.plan.perFloor : 0;
     const cost = moves.reduce((s, m) => s + m.cost, 0), gained = movedFloors * per;
     const fastAfter = ft.status !== 'too_new' && ft.free + movedFloors >= ft.need;
     return { tower: t.id, goal, want, moves, unplaced, freed_floors: movedFloors, cost, homes_now: ft.free * per,
@@ -87,8 +93,10 @@
     if (!t.pass) out.push({ level: 'high', text: `${t.id} itself doesn't pass the brief (${(t.why || []).join(', ')}): emptying it may not lead to homes.` });
     if (ft.status === 'too_new') out.push({ level: 'high', text: `${t.id} is under ${P.minAge} years old, so the Texas fast-track doesn't apply.` });
     if (!ft.ageKnown) out.push({ level: 'medium', text: `Year built is missing for ${t.id}: fast-track eligibility (5+ years old) is unverified.` });
-    for (const m of plan.moves) if (m.lease_end - P.year >= P.longLease)
+    for (const m of plan.moves) if (m.lease_end != null && m.lease_end - P.year >= P.longLease)
       out.push({ level: 'high', text: `${m.tenant} has a lease to ${m.lease_end}: they can refuse, and a buyout of ~$${Math.round(m.cost / 1e5) / 10}M is an estimate.` });
+    const unk = plan.moves.filter(m => m.lease_end == null);
+    if (unk.length) out.push({ level: 'medium', text: `${unk.length} tenant(s) have no lease end on record: the buyout assumes ${unk[0].buyout_years} more years; confirm with the rent roll.` });
     for (const m of plan.moves) if (m.dist_m > P.farM) out.push({ level: 'medium', text: `${m.tenant} would move ${m.dist_m} m to ${m.to}: far enough that they may prefer to leave downtown.` });
     for (const id of plan.receivers) { const r = byId.get(id); if (r && r.pass) out.push({ level: 'medium', text: `${id} receives tenants but is itself a conversion candidate: filling it blocks its own homes.` }); }
     if (plan.unplaced.length) out.push({ level: 'high', text: `${plan.unplaced.length} tenant(s) have no tower nearby with enough empty space.` });

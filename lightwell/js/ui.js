@@ -114,7 +114,7 @@
         Incentives ≈ <b>${LW.bigMoney(mp.cost)}</b>${mp.cost_per_home_gained ? ` · <b>${money(mp.cost_per_home_gained)}</b> per home unlocked` : ''} ${tagFor(b, null, 'ESTIMATE')}<br>
         ${mp.fast_track_after ? '<span class="ok">✓ reaches the 65% fast-track</span>' : '<span class="bad">✗ still short of 65%</span>'}</div>
         ${mp.moves.map(m => `<div class="mv"><span class="tag ${m.src === 'COSTAR' ? 't-cs' : 't-sim'}">${m.src === 'COSTAR' ? 'COSTAR' : 'SIMULATED'}</span>
-          <span><b>${esc(m.tenant)}</b> · fl ${range(m.floors)} · ${fmt(m.sqft / 1000)}k sq ft · lease to ${m.lease_end}<br>→ <a href="#" data-go="${m.to}">${esc((LW.B.find(x => x.id === m.to) || {}).label || m.to)}</a> · ${m.dist_m} m · ${LW.bigMoney(m.cost)}</span></div>`).join('')}
+          <span><b>${esc(m.tenant)}</b> · fl ${range(m.floors)} · ${fmt(m.sqft / 1000)}k sq ft · ${m.lease_end ? 'lease to ' + m.lease_end : 'lease end not on record'}<br>→ <a href="#" data-go="${m.to}">${esc((LW.B.find(x => x.id === m.to) || {}).label || m.to)}</a> · ${m.dist_m} m · ${LW.bigMoney(m.cost)}</span></div>`).join('')}
         ${mp.unplaced.length ? `<div class="mv bad">${mp.unplaced.length} tenant(s) found no nearby tower with room.</div>` : ''}
         ${ch ? `<div class="redteam ${ch.verdict}"><b>RED TEAM · ${LW.VERDICT[ch.verdict]}</b>${ch.risks.length ? '<ul>' + ch.risks.map(r => `<li class="${r.level}">${esc(r.text)}</li>`).join('') + '</ul>' : ''}</div>` : ''}</div>`;
     }

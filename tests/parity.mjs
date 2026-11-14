@@ -17,7 +17,16 @@ const scenarios = [
   // Daylight X-ray: strict mode with a looser limit, and the check switched off
   { S: { u: 30, cap: 300000, allowLW: true, minHomes: 20, useParking: true, require: [], neighbours: true, dayLim: 30, dayStrict: true } },
   { S: { u: 30, cap: 300000, allowLW: true, minHomes: 20, useParking: true, require: [], neighbours: false } },
+  // real CoStar paths: sprinkler records, converted buildings, tenants sharing floors, lease ends not on record
+  { S: { u: 30, cap: 300000, allowLW: true, minHomes: 20, useParking: true, require: [] }, costar: true },
 ];
+// CoStar-like tenants: two tenants on every other floor, and some leases with no end on record (null)
+const realTenants = b => { const empty = new Set(b.vacantFloors), out = []; let i = 0;
+  for (let f = 2; f <= b.floors; f++) { if (empty.has(f)) continue;
+    out.push({ name: `CoStar tenant ${i}`, floors: [f], sqft: Math.round(b.W * b.D * 0.6), lease_end: i % 3 === 0 ? null : 2026 + (i % 7), src: 'COSTAR' });
+    if (i % 2 === 0) out.push({ name: `CoStar tenant ${i}b`, floors: [f], sqft: Math.round(b.W * b.D * 0.4), lease_end: i % 4 === 0 ? null : 2027 + (i % 5), src: 'COSTAR' });
+    i++; }
+  return out; };
 const out = [];
 for (const sc of scenarios) {
   LW.S = { ...sc.S };
@@ -27,10 +36,12 @@ for (const sc of scenarios) {
     if (sc.core && b.idx % 4 === 1) b.core = [b.W * 0.3, b.D * 0.35, b.W * 0.7, b.D * 0.65];
     if (sc.missing && b.idx % 5 === 2) { b.rep = null; b.year = null; }
     if (sc.missing && b.idx % 5 === 3) b.obs = [];
+    if (sc.costar) { b.sprinklers = [true, false, null][b.idx % 3]; if (b.idx % 11 === 5) b.converted = 2022; if (b.idx % 4 === 0) b.tenants = realTenants(b); }
     LW.analyze(b);
     const L = b.plan.L, issues = LW.checkLayout(L, b.W, b.D);
     rows.push({ input: { id: b.id, W: b.W, D: b.D, heightM: b.heightM, floors: b.floors, f2f: b.f2f, year: b.year, rep: b.rep,
       obs: b.obs, scanned: b.scanned, core: b.core, forceLW: b.forceLW, real: b.real, vacantFloors: b.vacantFloors, center: b.center, day: b.day,
+      sprinklers: b.sprinklers ?? null, converted: b.converted ?? null, tenants: b.tenants ?? null,
       src: { vacant: LW.srcOf(b, 'vacant') } }, summary: LW.summary(b), issues,
       courtOK: b.courtOK, altIssues: b.alt ? LW.checkLayout(b.alt.L, b.W, b.D) : [] });
     copies.push(b);

@@ -12,6 +12,7 @@ DEFAULT_ASSUMPTIONS = {
     "costPerSqft": 255, "abatement": 20, "lightwellPerSqft": 420, "sprinklerPerSqft": 9,
     "newBuildPerHome": 400000, "carbonKgPerM2": 500, "reuseSaving": 0.6, "f2fMin": 12.5, "f2fHard": 10.5, "maxTravelFt": 250,
     "unknownVacancy": 0.25, "unknownYear": 1970, "moveCostSqft": 15, "buyoutSqftYr": 30,
+    "unknownLeaseYrs": 3,   # years of concessions assumed when a tenant's lease end is not on record (real CoStar tenants)
 }
 DEFAULT_CONSTRAINTS = {"u": 30, "cap": 300000, "allowLW": True, "minHomes": 20, "useParking": True, "require": [],
                        "neighbours": True, "dayLim": 25, "dayStrict": False}   # last three: Daylight X-ray
@@ -93,6 +94,8 @@ class Building:
     assumed: list = field(default_factory=list)
     courtOK: bool = False
     day: dict | None = None           # Daylight X-ray profile from lightwell/data/daylight.json (sent by the browser)
+    sprinklers: bool | None = None    # CoStar: True = sprinklered, False = none on record, None = unknown (year rule applies)
+    converted: int | None = None      # CoStar: year the building was converted to another use (it then never passes)
 
 
 def layout(W, D, u, lw, core=None):
@@ -215,21 +218,25 @@ def safety(b: Building, L, A):
         sep = math.hypot(c[2] - c[0], c[3] - c[1])
     req = math.hypot(b.W, b.D) / 3
     year_known = b.year is not None
-    retrofit = (b.year if year_known else A["unknownYear"]) < 1975
+    # sprinklers: CoStar's record when imported (True / False); otherwise towers built before 1975 are assumed to need them
+    sprk = b.sprinklers if b.sprinklers is True or b.sprinklers is False else None
+    retrofit = (not sprk) if sprk is not None else (b.year if year_known else A["unknownYear"]) < 1975
     notes = []
     if travel > A["maxTravelFt"]:
         notes.append(f"Farthest home is about {jround(travel)} ft from a stair (limit ~{A['maxTravelFt']} ft)")
     if sep < req:
         notes.append(f"Stairs about {jround(sep)} ft apart; needs ~{jround(req)} ft: likely a remote stair")
     if retrofit:
-        notes.append("Built before 1975: assume a full sprinkler retrofit" if year_known else "Year built unknown: sprinkler retrofit assumed")
+        notes.append("No sprinklers on record (CoStar): assume a full sprinkler retrofit" if sprk is False
+                     else "Built before 1975: assume a full sprinkler retrofit" if year_known else "Year built unknown: sprinkler retrofit assumed")
     status = "fail" if travel > A["maxTravelFt"] * 1.2 else ("check" if travel > A["maxTravelFt"] or sep < req else "verify")
     stairs = {"lightwell": "Two new stair cores assumed at opposite corners of the courtyard",
               "given": "Stairs assumed at opposite corners of the measured core"}.get(
         L["coreBasis"], "Core position and size assumed (typical central core); stairs assumed at its corners")
     return {"travel": travel, "sep": sep, "req": req, "retrofit": retrofit, "status": status, "notes": notes,
             "coreBasis": L["coreBasis"], "assumed": [stairs], "measured": [f"Floor plate {b.W} x {b.D} ft"]
-            + (["Core rectangle"] if L["coreBasis"] == "given" else [])}
+            + (["Core rectangle"] if L["coreBasis"] == "given" else [])
+            + ([f"Sprinklers: {'yes' if sprk else 'none'} (CoStar)"] if sprk is not None else [])}
 
 
 # ---- Daylight X-ray (mirrors LW.wallAngle / LW.daylight in engine.js) ----
@@ -344,6 +351,8 @@ def analyze(b: Building, S=None, A=None) -> Building:
     missing = [k for k in (S.get("require") or []) if not (b.real or {}).get(k)]
     if missing:
         why.append("missing real " + " + ".join(LAYER_NAME.get(k, k) for k in missing) + " data")
+    if b.converted:   # CoStar records the building as converted to another use
+        why.append(f"already converted ({b.converted})")
     b.why, b.passes = why, not why
     b.phantom = b.rep is not None and len(obs) >= 2 and b.rep - max(obs) >= 0.45
     return b

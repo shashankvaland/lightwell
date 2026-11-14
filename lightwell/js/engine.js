@@ -22,6 +22,7 @@
     unknownYear: 1970,       // used only when year built is missing: conservative (abatement + sprinkler retrofit)
     moveCostSqft: 15,        // tenant move: moving + fit-out allowance, $ per sq ft (tenant moves)
     buyoutSqftYr: 30,        // early lease exit: rent concession, $ per sq ft per year left after next year
+    unknownLeaseYrs: 3,      // years of concessions assumed when a tenant's lease end is not on record (real CoStar tenants)
   };
   // The brief: live constraints from the request and the sliders.
   // neighbours / dayLim / dayStrict: Daylight X-ray (see LW.wallAngle below).
@@ -148,18 +149,21 @@
       sep = Math.hypot((p[0] + p[2]) / 2 - (q[0] + q[2]) / 2, (p[1] + p[3]) / 2 - (q[1] + q[3]) / 2);
     } else { const c = L.cores[0]; sep = Math.hypot(c[2] - c[0], c[3] - c[1]); }
     const req = Math.hypot(b.W, b.D) / 3;               // stairs at least 1/3 of the floor diagonal apart (sprinklered)
-    const retrofit = (yearKnown ? year : A.unknownYear) < 1975;
+    // sprinklers: CoStar's record when imported (true / false); otherwise towers built before 1975 are assumed to need them
+    const sprk = b.sprinklers === true || b.sprinklers === false ? b.sprinklers : null;
+    const retrofit = sprk != null ? !sprk : (yearKnown ? year : A.unknownYear) < 1975;
     const notes = [];
     if (travel > A.maxTravelFt) notes.push(`Farthest home is about ${Math.round(travel)} ft from a stair (limit ~${A.maxTravelFt} ft)`);
     if (sep < req) notes.push(`Stairs about ${Math.round(sep)} ft apart; needs ~${Math.round(req)} ft: likely a remote stair`);
-    if (retrofit) notes.push(yearKnown ? 'Built before 1975: assume a full sprinkler retrofit' : 'Year built unknown: sprinkler retrofit assumed');
+    if (retrofit) notes.push(sprk === false ? 'No sprinklers on record (CoStar): assume a full sprinkler retrofit'
+      : yearKnown ? 'Built before 1975: assume a full sprinkler retrofit' : 'Year built unknown: sprinkler retrofit assumed');
     const status = travel > A.maxTravelFt * 1.2 ? 'fail' : (travel > A.maxTravelFt || sep < req) ? 'check' : 'verify';
     const stairs = L.coreBasis === 'lightwell' ? 'Two new stair cores assumed at opposite corners of the courtyard'
       : L.coreBasis === 'given' ? 'Stairs assumed at opposite corners of the measured core'
       : 'Core position and size assumed (typical central core); stairs assumed at its corners';
     return {
       travel, sep, req, retrofit, status, notes, coreBasis: L.coreBasis,
-      measured: [`Floor plate ${b.W} × ${b.D} ft`].concat(L.coreBasis === 'given' ? ['Core rectangle'] : []),
+      measured: [`Floor plate ${b.W} × ${b.D} ft`].concat(L.coreBasis === 'given' ? ['Core rectangle'] : [], sprk != null ? [`Sprinklers: ${sprk ? 'yes' : 'none'} (CoStar)`] : []),
       assumed: [stairs, 'Travel = walking distance along corridors from each home to the nearest core, +10 ft inside the home'],
       unverified: ['Two independent exit stairs on every floor', `Exit-access travel within ${A.maxTravelFt} ft (sprinklered)`,
         'Stair separation at least 1/3 of the floor diagonal', 'Rated corridors and stair enclosures', 'Sprinkler and fire-alarm coverage'],
@@ -252,6 +256,7 @@
     if (f2f < A.f2fHard) why.push(`floor-to-floor under ${A.f2fHard} ft`);
     const missing = (S.require || []).filter(k => !(b.real && b.real[k]));
     if (missing.length) why.push('missing real ' + missing.map(k => ({ market: 'CoStar', aerial: 'Vexcel', interior: 'Matterport' })[k] || k).join(' + ') + ' data');
+    if (b.converted) why.push(`already converted (${b.converted})`);   // CoStar records the building as converted to another use
     b.why = why; b.pass = why.length === 0;
     b.phantom = rep != null && obs.length >= 2 && rep - Math.max(...obs) >= 0.45;
     return b;

@@ -187,3 +187,55 @@ def test_daylight_file_is_well_formed():
         for k, p in rec["prof"].items():
             assert p and all(0 <= a <= 90 for a in p), k
             assert 0 <= rec["face"][k] < 360
+
+
+# ---------------- Real CoStar data: sprinklers, converted buildings, shared floors, unknown lease ends ----------------
+def test_costar_sprinkler_record_overrides_the_year_rule():
+    old_with = analyze(mk(year=1962, sprinklers=True))
+    assert not old_with.plan["safety"]["retrofit"]                            # 1962 but sprinklered: no retrofit cost
+    new_without = analyze(mk(year=1984, sprinklers=False))
+    sf = new_without.plan["safety"]
+    assert sf["retrofit"] and any("No sprinklers on record (CoStar)" in n for n in sf["notes"])
+    unknown = analyze(mk(year=1962))
+    assert unknown.plan["safety"]["retrofit"] and summary(analyze(mk(year=1962, sprinklers=None))) == summary(unknown)
+    assert old_with.plan["cost"] < analyze(mk(year=1962)).plan["cost"]        # the sprinkler retrofit is no longer priced in
+
+
+def test_converted_building_never_passes():
+    b = analyze(mk(converted=2022))
+    assert not b.passes and "already converted (2022)" in b.why
+    assert analyze(mk()).why == [w for w in b.why if not w.startswith("already converted")]
+
+
+def _tower(**kw):
+    from shuffle import tenants_of  # noqa: F401  (imported for its module: plan_moves needs it)
+    base = dict(id="HOU-99", W=120, D=80, heightM=60, floors=10, f2f=13, year=1980, rep=0.6, obs=[], scanned=False,
+                vacantFloors=[2, 3], src={"vacant": "COSTAR"}, center=[-95.36, 29.75])
+    base.update(kw)
+    return analyze(Building(**base))
+
+
+def test_a_shared_floor_is_freed_only_when_every_tenant_moves():
+    from shuffle import plan_moves
+    t = _tower(tenants=[{"name": "A", "floors": [4], "sqft": 5000, "lease_end": 2027, "src": "COSTAR"},
+                        {"name": "B", "floors": [4], "sqft": 4000, "lease_end": 2031, "src": "COSTAR"},
+                        {"name": "C", "floors": [5], "sqft": 9000, "lease_end": 2028, "src": "COSTAR"}])
+    r = _tower(id="HOU-98", vacantFloors=[2, 3, 4, 5, 6, 7, 8, 9], center=[-95.361, 29.751])
+    p = plan_moves(t, [t, r], "empty")
+    assert p["want"] == 2 and p["freed_floors"] == 2                           # floors 4 and 5, not 3 tenant-floors
+    one = plan_moves(t, [t, r], "fast")                                        # needs 7 - 2 = 5 floors; only 2 exist
+    assert one["freed_floors"] == 2 and [m["tenant"] for m in one["moves"]] == ["A", "C", "B"]
+
+
+def test_unknown_lease_ends_go_last_cost_the_assumption_and_are_flagged():
+    from shuffle import challenge_plan, plan_moves
+    t = _tower(tenants=[{"name": "Known", "floors": [4], "sqft": 1000, "lease_end": 2030, "src": "COSTAR"},
+                        {"name": "Unknown", "floors": [5], "sqft": 1000, "lease_end": None, "src": "COSTAR"}])
+    r = _tower(id="HOU-98", vacantFloors=[2, 3, 4, 5, 6, 7, 8, 9], center=[-95.361, 29.751])
+    p = plan_moves(t, [t, r], "empty", {"unknownLeaseYrs": 3})
+    assert [m["tenant"] for m in p["moves"]] == ["Known", "Unknown"]
+    unk = next(m for m in p["moves"] if m["tenant"] == "Unknown")
+    assert unk["lease_end"] is None and unk["buyout_years"] == 3 and unk["cost"] == 1000 * (15 + 30 * 3)
+    risks = [x["text"] for x in challenge_plan(t, p, [t, r])["risks"]]
+    assert any("1 tenant(s) have no lease end on record" in x for x in risks)
+    assert not any("simulated" in x for x in risks)                           # real CoStar tenants are not called simulated

@@ -71,14 +71,25 @@ def plan_moves(t: Building, B: list[Building], goal: str = "fast", A: dict | Non
     ft, tenants = fast_track(t), tenants_of(t)
     if not tenants or ft["status"] == "unknown":
         return None
-    want = sum(len(x["floors"]) for x in tenants) if goal == "empty" else ft["short"]
-    order = sorted(tenants, key=lambda x: (x["lease_end"], len(x["floors"]), x["floors"][0]))
-    pick, freed = [], 0
+    # Real CoStar floors can be shared by several tenants: a floor is freed only when every tenant on it moves.
+    ts = [x for x in tenants if x.get("floors")]
+    on_floor = {}
+    for x in ts:
+        for f in x["floors"]:
+            on_floor[f] = on_floor.get(f, 0) + 1
+    want = len(on_floor) if goal == "empty" else ft["short"]
+    # leases that end soonest first; a lease end that is not on record (None) goes last
+    order = sorted(ts, key=lambda x: (1 if x.get("lease_end") is None else 0, 0 if x.get("lease_end") is None else x["lease_end"],
+                                      len(x["floors"]), x["floors"][0]))
+    left, pick, freed = dict(on_floor), [], 0
     for x in order:
         if freed >= want:
             break
         pick.append(x)
-        freed += len(x["floors"])
+        for f in x["floors"]:
+            left[f] -= 1
+            if not left[f]:
+                freed += 1
     idx = {id(r): i for i, r in enumerate(B)}
     cap = {}
     for r in B:
@@ -88,17 +99,21 @@ def plan_moves(t: Building, B: list[Building], goal: str = "fast", A: dict | Non
     for x in pick:
         opts = sorted(((v[0], _dist(t, v[0])) for v in cap.values() if v[1] >= x["sqft"]),
                       key=lambda o: (1 if o[0].passes else 0, o[1], idx[id(o[0])]))
-        yrs = max(0, x["lease_end"] - P["year"] - 1)
+        yrs = A["unknownLeaseYrs"] if x.get("lease_end") is None else max(0, x["lease_end"] - P["year"] - 1)
         cost = x["sqft"] * (A["moveCostSqft"] + A["buyoutSqftYr"] * yrs)
         if not opts:
             unplaced.append({"tenant": x["name"], "sqft": x["sqft"], "floors": x["floors"]})
             continue
         r, d = opts[0]
         cap[id(r)][1] -= x["sqft"]
-        moves.append({"tenant": x["name"], "floors": x["floors"], "sqft": x["sqft"], "lease_end": x["lease_end"],
+        moves.append({"tenant": x["name"], "floors": x["floors"], "sqft": x["sqft"], "lease_end": x.get("lease_end"),
                       "src": x.get("src", "COSTAR"), "from": t.id, "to": r.id, "to_passes": bool(r.passes),
                       "dist_m": jround(d), "cost": jround(cost), "buyout_years": yrs})
-    moved = sum(len(m["floors"]) for m in moves)
+    done = {}
+    for m in moves:
+        for f in m["floors"]:
+            done[f] = done.get(f, 0) + 1
+    moved = sum(1 for f, n in done.items() if n == on_floor[f])
     per = t.plan["perFloor"] if t.plan else 0
     cost = sum(m["cost"] for m in moves)
     gained = moved * per
@@ -120,9 +135,13 @@ def challenge_plan(t: Building, plan: dict | None, B: list[Building]) -> dict:
     if not ft["ageKnown"]:
         out.append({"level": "medium", "text": f"Year built is missing for {t.id}: fast-track eligibility (5+ years old) is unverified."})
     for m in plan["moves"]:
-        if m["lease_end"] - P["year"] >= P["longLease"]:
+        if m["lease_end"] is not None and m["lease_end"] - P["year"] >= P["longLease"]:
             out.append({"level": "high", "text": f"{m['tenant']} has a lease to {m['lease_end']}: they can refuse, and a buyout of "
                         f"~${jround(m['cost'] / 1e5) / 10:g}M is an estimate."})
+    unk = [m for m in plan["moves"] if m["lease_end"] is None]
+    if unk:
+        out.append({"level": "medium", "text": f"{len(unk)} tenant(s) have no lease end on record: the buyout assumes "
+                    f"{unk[0]['buyout_years']:g} more years; confirm with the rent roll."})
     for m in plan["moves"]:
         if m["dist_m"] > P["farM"]:
             out.append({"level": "medium", "text": f"{m['tenant']} would move {m['dist_m']} m to {m['to']}: far enough that they may prefer to leave downtown."})
