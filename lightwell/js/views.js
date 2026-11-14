@@ -6,6 +6,10 @@
 (function () {
   const LW = window.LW, views = LW.views = {};
   const CENTER = [-95.3665, 29.7575];
+  // Daylight X-ray colour of floor f: slate (no home sees the sky) to gold (every home does); grey = no data.
+  const SLATE = [58, 71, 102], GOLD = [245, 185, 66];
+  LW.dayColor = (b, f) => { const d = b.plan && b.plan.day; if (!d) return '#3b4254'; if (f < 2) return '#2c3a52';
+    const s = b.plan.perFloor ? d.byFloor[f - 2] / b.plan.perFloor : 0; return LW.hex(SLATE.map((v, i) => Math.round(v + (GOLD[i] - v) * s))); };
 
   // Tenant-move arcs: points along a raised arc from the tower being emptied to the receiving tower.
   // Heights in metres above ground; t in [0,1].
@@ -52,6 +56,7 @@
       if (prev) this.map.setFeatureState({ source: 'bld', id: prev.osmId }, { sel: false });
       if (b) this.map.setFeatureState({ source: 'bld', id: b.osmId }, { sel: true });
       this._floorsSel();
+      if (this.map.getSource('dayLines')) this._dayLines();
     },
     fly(b) { if (this.ready) this.map.flyTo({ center: b.center, zoom: 16.6, pitch: 62, bearing: this.map.getBearing() + 25, speed: 0.8 }); },
     overview() { if (this.ready) this.map.easeTo({ zoom: 14.8, pitch: 55, bearing: this.map.getBearing() - 20, duration: 1500 }); },
@@ -139,6 +144,56 @@
       const i = LW.selected ? LW.selected.idx : -1;
       this.map.setPaintProperty('floorsEmpty', 'fill-extrusion-color', ['case', ['==', ['get', 'bidx'], i], '#fff0b8', '#f5b942']);
       this.map.setPaintProperty('floorsLeased', 'fill-extrusion-color', ['case', ['==', ['get', 'bidx'], i], '#9fb2d6', '#3a4766']);
+    },
+
+    // ---- Daylight X-ray: every candidate tower as floor slabs, coloured by how much sky its windows see ----
+    _dayGeo() {
+      const feats = [];
+      for (const b of LW.B) {
+        if (!b.plan) LW.analyze(b);
+        const n = LW.eff(b, 'floors'), fh = b.heightM / n, d = b.plan.day;
+        for (let f = 1; f <= n; f++) feats.push({ type: 'Feature', properties: { bidx: b.idx, f, open: d && f >= 2 ? d.byFloor[f - 2] : -1, per: b.plan.perFloor,
+          c: LW.dayColor(b, f), base: (f - 1) * fh, top: f * fh - Math.min(0.8, fh * 0.2) }, geometry: { type: 'Polygon', coordinates: [b.ring] } });
+      }
+      return { type: 'FeatureCollection', features: feats };
+    },
+    setDaylight(on) {
+      if (!this.ready) return; const map = this.map;
+      if (on && map.getSource('day')) map.getSource('day').setData(this._dayGeo());   // the brief or the tower list may have changed
+      if (on && !map.getSource('day')) {
+        map.addSource('day', { type: 'geojson', data: this._dayGeo() });
+        map.addLayer({ id: 'daySlabs', type: 'fill-extrusion', source: 'day', paint: { 'fill-extrusion-color': ['get', 'c'],
+          'fill-extrusion-base': ['get', 'base'], 'fill-extrusion-height': ['get', 'top'], 'fill-extrusion-opacity': 0.95 } }, 'flags');
+        map.addSource('dayLines', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+        map.addLayer({ id: 'dayLines', type: 'line', source: 'dayLines', filter: ['==', ['geometry-type'], 'LineString'],
+          paint: { 'line-color': '#ef5d6f', 'line-width': 2.5, 'line-dasharray': [2, 1.5] } }, 'flags');
+        map.addLayer({ id: 'dayBlk', type: 'circle', source: 'dayLines', filter: ['==', ['geometry-type'], 'Point'],
+          paint: { 'circle-radius': 6, 'circle-color': '#ef5d6f', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 } }, 'flags');
+        const pop = this._dayPop = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10 });
+        map.on('click', 'daySlabs', e => LW.onSelect(LW.B[e.features[0].properties.bidx], false));
+        map.on('mousemove', 'daySlabs', e => {
+          const q = e.features[0].properties, b = LW.B[q.bidx]; if (!b) return;
+          map.getCanvas().style.cursor = 'pointer';
+          pop.setLngLat(e.lngLat).setHTML(`<b>${LW.esc(b.label)}</b> · floor ${q.f}: ` + (q.f < 2 ? 'lobby' : q.open < 0 ? 'no data' : `${q.open} of ${q.per} homes see the sky`)).addTo(map);
+        });
+        map.on('mouseleave', 'daySlabs', () => { map.getCanvas().style.cursor = ''; pop.remove(); });
+      }
+      if (!map.getSource('day')) return;
+      for (const id of ['daySlabs', 'dayLines', 'dayBlk']) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+      if (!on && this._dayPop) this._dayPop.remove();
+      map.setFilter('bld', on ? ['!', ['get', 'cand']] : (LW.floorsOn ? ['!', ['get', 'cand']] : null));   // hide the solid towers while slabs are shown
+      this._dayLines();
+    },
+    // red dashed lines from the selected tower to the main blocker of each dim wall
+    _dayLines() {
+      const src = this.map.getSource('dayLines'); if (!src) return;
+      const b = LW.selected, d = LW.dayViewOn && b && b.plan && b.plan.day, feats = [];
+      if (d) for (const k of Object.keys(d.walls)) {
+        const blk = k !== 'court' && b.day.blk[k]; if (!blk) continue;
+        feats.push({ type: 'Feature', properties: { k }, geometry: { type: 'LineString', coordinates: [b.center, blk.at] } },
+          { type: 'Feature', properties: { k }, geometry: { type: 'Point', coordinates: blk.at } });
+      }
+      src.setData({ type: 'FeatureCollection', features: feats });
     },
   };
 
@@ -283,6 +338,34 @@
       }
       if (this.floorsPrim) this.floorsPrim.show = on;
       if (this.prim) this.prim.show = !on;
+      this.viewer.scene.requestRender();
+    },
+
+    // ---- Daylight X-ray ----
+    // Google mode: a classification slice per floor tints the real photoreal tower. Fallback mode: stacked floor slabs.
+    // Rebuilt only when the inputs (brief, assumptions, corrections, data mode) changed since the last build.
+    setDaylight(on) {
+      if (!this.ready) return;
+      const key = LW.inputsKey();
+      if (on && this.dayPrim && this._dayKey !== key) { this.viewer.scene.primitives.remove(this.dayPrim); this.dayPrim = null; }
+      if (on && !this.dayPrim) {
+        this._dayKey = key;
+        const google = this.mode === 'google', insts = [];
+        const vf = google ? Cesium.VertexFormat.POSITION_ONLY : Cesium.PerInstanceColorAppearance.VERTEX_FORMAT;
+        for (const b of LW.B) {
+          if (!b.plan) LW.analyze(b);
+          const n = LW.eff(b, 'floors'), fh = b.heightM / n;
+          for (let f = 2; f <= n; f++) {
+            const lo = this.h0 + (f - 1) * fh, hi = this.h0 + f * fh - Math.min(0.8, fh * 0.2);
+            insts.push(this._poly(b.ring, lo, hi, Cesium.Color.fromCssColorString(LW.dayColor(b, f)).withAlpha(google ? 0.55 : 0.95), `f:${b.idx}:${f}`, vf));
+          }
+        }
+        this.dayPrim = this.viewer.scene.primitives.add(google
+          ? new Cesium.ClassificationPrimitive({ asynchronous: false, classificationType: Cesium.ClassificationType.CESIUM_3D_TILE, geometryInstances: insts })
+          : new Cesium.Primitive({ asynchronous: false, geometryInstances: insts, appearance: new Cesium.PerInstanceColorAppearance({ translucent: false, flat: false }) }));
+      }
+      if (this.dayPrim) this.dayPrim.show = on;
+      if (this.prim) this.prim.show = !on && !LW.floorsOn;
       this.viewer.scene.requestRender();
     },
 

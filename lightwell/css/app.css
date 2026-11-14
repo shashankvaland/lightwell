@@ -114,13 +114,20 @@ button.sv{background:rgba(60,198,180,.16);border-color:var(--teal)}
 /* Empty floors view */
 #views .sep{width:1px;background:var(--line);margin:4px 2px}
 #views button#floorsBtn.on{background:rgba(245,185,66,.25);color:var(--gold)}
-#floorsLegend{position:fixed;top:58px;left:50%;transform:translateX(-50%);z-index:3;display:none;gap:12px;align-items:center;
+#floorsLegend,#dayLegend{position:fixed;top:58px;left:50%;transform:translateX(-50%);z-index:3;display:none;gap:12px;align-items:center;
   font-size:12px;white-space:nowrap;max-width:calc(100vw - 700px);overflow:hidden;text-overflow:ellipsis;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:5px 10px}
-#floorsLegend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
-#floorsLegend .muted{color:var(--muted)}
+#floorsLegend i,#dayLegend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+#floorsLegend .muted,#dayLegend .muted{color:var(--muted)}
 .floorsRow{display:flex;gap:10px;align-items:flex-end;margin:8px 0;padding:8px;border-radius:8px;background:rgba(245,185,66,.06);border:1px solid rgba(245,185,66,.18)}
 .floorsRow svg{flex:none}
 .floorsRow .txt{font-size:12px}
+/* Daylight X-ray view: the sum goes on its own line so nothing is cut off at 1280 px */
+#views button#dayBtn.on{background:rgba(245,185,66,.25);color:var(--gold)}
+#dayLegend{flex-wrap:wrap;justify-content:center;row-gap:2px;white-space:normal}#dayLegend span{white-space:nowrap}#dayLegend #daySum{flex-basis:100%;text-align:center}
+.maplibregl-popup-content{background:#121a2b;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;box-shadow:0 6px 20px rgba(0,0,0,.45)}
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip{border-top-color:#121a2b}
+.maplibregl-popup-anchor-top .maplibregl-popup-tip,.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,.maplibregl-popup-anchor-top-right .maplibregl-popup-tip{border-bottom-color:#121a2b}
+.maplibregl-popup-anchor-left .maplibregl-popup-tip{border-right-color:#121a2b}.maplibregl-popup-anchor-right .maplibregl-popup-tip{border-left-color:#121a2b}
 
 /* agent team strip */
 #team{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}

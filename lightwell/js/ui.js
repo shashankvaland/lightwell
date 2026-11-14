@@ -45,6 +45,7 @@
     LW.view.setFlags(LW.flagsShown ? LW.B.filter(b => b.phantom) : []);
     totals(); renderRanking();
     if (LW.selected) { renderCard(LW.selected); if ($('plateBox').style.display === 'block') openPlate(LW.selected); }
+    if (LW.dayViewOn) { LW.view.setDaylight(true); daySum(); }   // the brief sliders recolour the Daylight view live
   };
   function totals() {
     if (!LW.scored) return;
@@ -504,15 +505,20 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
     }
     prev.show(false); next.show(true); LW.view = next;
     prev.stopOrbit(); prev.select(null, LW.selected); LW.refresh(); next.select(LW.selected, null);
-    next.setFloors(LW.floorsOn); if (next.setMoves) next.setMoves(LW.movePlan);
+    next.setFloors(LW.floorsOn); next.setDaylight(LW.dayViewOn); if (next.setMoves) next.setMoves(LW.movePlan);
     if (LW.selected) next.fly(LW.selected);
+    placeLegends();
   }
+  // The view legends sit just under the view note (shown in Photoreal 3D) instead of behind it.
+  function placeLegends() { const n = $('viewNote'), top = n.style.display === 'block' ? Math.round(n.getBoundingClientRect().bottom + 6) + 'px' : '';
+    $('floorsLegend').style.top = top; $('dayLegend').style.top = top; }
   document.querySelectorAll('#views button[data-v]').forEach(x => x.onclick = () => switchView(x.dataset.v));
   LW.switchView = switchView;
 
   // ---------- empty floors toggle ----------
   LW.floorsOn = false;
   $('floorsBtn').onclick = () => {
+    if (!LW.floorsOn && LW.dayViewOn) $('dayBtn').onclick();   // Empty floors and Daylight are exclusive
     LW.floorsOn = !LW.floorsOn;
     $('floorsBtn').classList.toggle('on', LW.floorsOn);
     $('floorsLegend').style.display = LW.floorsOn ? 'flex' : 'none';
@@ -522,5 +528,23 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
     $('floorsSum').textContent = known.length ? `${fmt(empty)} of ${fmt(all)} office floors empty across ${known.length} towers · ${real ? real + ' from CoStar' : 'simulated until CoStar data'}${known.length < LW.B.length ? ` · ${LW.B.length - known.length} unknown` : ''}`
       : 'No empty-floor data: import CoStar available-space floors';
     LW.view.setFloors(LW.floorsOn);
+  };
+
+  // ---------- Daylight X-ray view toggle ----------
+  LW.dayViewOn = false;
+  function daySum() {
+    LW.B.forEach(b => { if (!b.plan) LW.analyze(b); });
+    const ds = LW.B.map(b => b.plan.day).filter(Boolean), dim = ds.reduce((s, d) => s + d.dim, 0), all = ds.reduce((s, d) => s + d.open + d.dim, 0);
+    $('daySum').textContent = LW.S.neighbours === false ? 'Daylight check is switched off in the brief'
+      : ds.length ? `${fmt(dim)} of ${fmt(all)} homes face a nearby building · limit ${ds[0].lim}°${LW.S.dayStrict ? ' · strict' : ''}`
+      : 'No neighbour data (run backend/daylight.py)';
+  }
+  $('dayBtn').onclick = () => {
+    if (!LW.dayViewOn && LW.floorsOn) $('floorsBtn').onclick();   // exclusive with Empty floors
+    LW.dayViewOn = !LW.dayViewOn;
+    $('dayBtn').classList.toggle('on', LW.dayViewOn);
+    $('dayLegend').style.display = LW.dayViewOn ? 'flex' : 'none';
+    if (LW.dayViewOn) daySum();
+    LW.view.setDaylight(LW.dayViewOn);
   };
 })();

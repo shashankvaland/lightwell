@@ -10,8 +10,9 @@
 <body>
 <div id="map"></div>
 <div id="g3d" style="visibility:hidden"></div>
-<div id="views"><button data-v="map" class="on">Map</button><button data-v="g3d">Photoreal 3D</button><span class="sep"></span><button id="floorsBtn" title="Show every tower floor by floor">Empty floors</button></div>
+<div id="views"><button data-v="map" class="on">Map</button><button data-v="g3d">Photoreal 3D</button><span class="sep"></span><button id="floorsBtn" title="Show every tower floor by floor">Empty floors</button><button id="dayBtn" title="Colour every floor by how much sky its windows see">Daylight</button></div>
 <div id="floorsLegend"><span><i style="background:#f5b942"></i>Empty floor</span><span><i style="background:#3a4766;opacity:.6"></i>Leased floor</span><span class="muted" id="floorsSum"></span></div>
+<div id="dayLegend"><span><i style="background:#f5b942"></i>All homes see the sky</span><span><i style="background:#3a4766"></i>None do</span><span><i style="background:#3b4254"></i>No data</span><span class="muted" id="daySum"></span></div>
 <div id="viewNote"></div>
 <div id="toast"></div>
 
