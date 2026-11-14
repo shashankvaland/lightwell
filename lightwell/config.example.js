@@ -11,6 +11,7 @@ window.LIGHTWELL_CONFIG = {
   // starts with "MLY|". Used first by the Street View button; Google is the fallback.
   MAPILLARY_TOKEN: "",
 
-  // Agent backend (backend/app.py). If it isn't running, the app uses its built-in offline agent.
+  // Agent backend (backend/app.py). This is also the default when config.js is missing.
+  // If it isn't running, the app uses its built-in offline agent. Set to "" to always use the offline agent.
   BACKEND_URL: "http://localhost:8000",
 };

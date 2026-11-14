@@ -12,6 +12,7 @@ lightwell/data/real_overlay.json
 __pycache__/
 *.pyc
 .venv/
+tests/js_results.json
 
 # local tool settings
 .claude/

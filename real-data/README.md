@@ -40,6 +40,9 @@ It matches every row to a real OpenStreetMap footprint, prints a match report, a
 | capture_date | date of the aerial image, YYYY-MM-DD |
 | spaces_total, cars_counted | integers |
 | source | `vexcel`, `vexcel+claude` or `manual` |
+| confidence | optional: `high`, `medium`, `low` (written by `count_cars.py`) |
+| notes | optional: what limits the count (shadows, trees, a garage roof) |
+| image_ref | optional: image file or Vexcel image id, shown in the evidence drawer |
 
 **interiors.csv** (Matterport)
 | column | meaning |
@@ -56,5 +59,7 @@ It matches every row to a real OpenStreetMap footprint, prints a match report, a
 2. Otherwise the nearest footprint centre within 40 m is used, and the report marks it "nearest".
 3. Rows that match nothing are listed so you can fix their coordinates.
 
-Buildings with real CoStar data show their **address** instead of a HOU-xx code, and every value carries its real
-source tag (COSTAR, VEXCEL, MATTERPORT) instead of SIMULATED.
+Buildings with real CoStar data show their **address** instead of a HOU-xx code. Every value carries its own source tag:
+a CoStar row with only a year built tags the year COSTAR and leaves leasing MISSING (it is never filled with a simulated
+number). With an overlay loaded the app starts in **Real data only** mode; **Demo fill-in** simulates values only on
+anonymous towers. Click any tag in the app to see the record behind it.

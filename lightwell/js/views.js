@@ -69,6 +69,7 @@
     _floorsGeo() {
       const feats = [];
       for (const b of LW.B) {
+        if (LW.srcOf(b, 'vacant') === 'MISSING') continue;   // unknown is not "fully leased": don't draw it
         const fh = b.heightM / b.floors, empty = new Set(b.vacantFloors);
         for (let f = 1; f <= b.floors; f++) feats.push({ type: 'Feature', properties: { bidx: b.idx, empty: empty.has(f),
           base: (f - 1) * fh, top: f * fh - Math.min(0.8, fh * 0.2) }, geometry: { type: 'Polygon', coordinates: [b.ring] } });
@@ -77,6 +78,7 @@
     },
     setFloors(on) {
       if (!this.ready) return; const map = this.map;
+      if (on && map.getSource('floors')) map.getSource('floors').setData(this._floorsGeo());   // the tower list may have changed
       if (on && !map.getSource('floors')) {
         map.addSource('floors', { type: 'geojson', data: this._floorsGeo() });
         const paint = (sel, other) => ({ 'fill-extrusion-color': ['case', ['==', ['get', 'bidx'], -1], sel, other],
@@ -213,11 +215,14 @@
     // Fallback mode: stacked floor slabs, empty floors gold and leased floors faded.
     setFloors(on) {
       if (!this.ready) return;
+      if (on && this.floorsPrim && this._floorsFor !== LW.B) { this.viewer.scene.primitives.remove(this.floorsPrim); this.floorsPrim = null; }
       if (on && !this.floorsPrim) {
+        this._floorsFor = LW.B;
         const google = this.mode === 'google', insts = [];
         const vf = google ? Cesium.VertexFormat.POSITION_ONLY : Cesium.PerInstanceColorAppearance.VERTEX_FORMAT;
         const gold = Cesium.Color.fromCssColorString('#f5b942'), slate = Cesium.Color.fromCssColorString('#3a4766');
         for (const b of LW.B) {
+          if (LW.srcOf(b, 'vacant') === 'MISSING') continue;
           const fh = b.heightM / b.floors, empty = new Set(b.vacantFloors);
           for (let f = 1; f <= b.floors; f++) {
             const isEmpty = empty.has(f); if (google && !isEmpty) continue;

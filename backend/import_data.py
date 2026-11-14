@@ -102,6 +102,7 @@ def main():
 
     by_osm, report = match(costar, features)
     by_cid = {r["costar_id"]: oid for oid, r in by_osm.items()}
+    how_by_oid = {oid: how for _cid, how, oid in report if oid is not None}
 
     buildings = {}
     for oid, r in by_osm.items():
@@ -109,7 +110,7 @@ def main():
             "costar_id": r["costar_id"], "address": r.get("address") or None, "owner": r.get("owner") or None,
             "leased": None if num(r.get("leased_pct")) is None else num(r.get("leased_pct")) / 100,
             "year": num(r.get("year_built"), int), "rba_sqft": num(r.get("rba_sqft"), int), "floors": num(r.get("floors"), int),
-            "vacant_floors": floors(r.get("vacant_floors", "")),
+            "vacant_floors": floors(r.get("vacant_floors", "")), "match": how_by_oid.get(oid),
         }.items() if v is not None}
 
     orphans = []
@@ -118,8 +119,10 @@ def main():
         spaces, cars = num(r.get("spaces_total")), num(r.get("cars_counted"))
         if oid is None or not spaces:
             orphans.append(("parking", r.get("costar_id"))); continue
-        buildings[str(oid)].setdefault("parking", []).append(
-            {"date": r.get("capture_date"), "pct": round(min(cars / spaces, 1), 3), "source": r.get("source") or "vexcel"})
+        buildings[str(oid)].setdefault("parking", []).append({k: v for k, v in {
+            "date": r.get("capture_date"), "pct": round(min(cars / spaces, 1), 3), "source": r.get("source") or "vexcel",
+            "spaces": int(spaces), "cars": int(cars), "confidence": r.get("confidence") or None, "notes": r.get("notes") or None,
+            "image": r.get("image_ref") or None}.items() if v is not None})
     for r in interiors:
         oid = by_cid.get(r.get("costar_id"))
         if oid is None:

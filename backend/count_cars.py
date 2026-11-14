@@ -89,8 +89,8 @@ def main():
     with a.csv.open("a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         if new:
-            w.writerow(["costar_id", "capture_date", "spaces_total", "cars_counted", "source"])
-        w.writerow([a.costar_id, a.date, r["spaces_total"], r["cars_counted"], "vexcel+claude"])
+            w.writerow(["costar_id", "capture_date", "spaces_total", "cars_counted", "source", "confidence", "notes", "image_ref"])
+        w.writerow([a.costar_id, a.date, r["spaces_total"], r["cars_counted"], "vexcel+claude", r["confidence"], r["notes"], Path(a.image).name])
     print(f"Appended to {a.csv}")
 
 

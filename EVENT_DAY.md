@@ -13,7 +13,11 @@ each, and a few Matterport scans, showing in the app with real source tags.
       **capture dates** exist for downtown Houston? Two or three dates is enough.
 - [ ] Ask the Matterport engineers: which downtown Houston buildings have scans, and can I read a floor's
       **width, depth, ceiling height and core position** (or at least the floor plan image)?
-- [ ] Ask Arlequin if the hidden-vacancy signals count for the forensics track.
+- [ ] Ask Arlequin if the occupancy discrepancies count for the forensics track (they are observations to investigate,
+      not evidence of crime; say so).
+- [ ] **Peri interview, early:** a broker, property manager or owner. Ask what they need to see before a site visit.
+      Put their name, role, business, a quote and the items they asked for in `lightwell/consult.js`; they appear first
+      in every checklist and memo. Keep a photo or screenshot for Devpost.
 
 ## Hour 1-2: fill the three CSVs
 Copy `real-data/templates/*.csv` into `real-data/`. Write a short script per API that saves rows in that format
@@ -35,10 +39,13 @@ python backend/import_data.py
 - [ ] Reload the page. The left note should count your real towers, and their cards should show COSTAR / VEXCEL /
       MATTERPORT tags and the street address instead of HOU-xx.
 - [ ] Run the agent. Its CoStar / Vexcel / Matterport steps say how many towers are real.
+- [ ] Click a few source tags: the evidence drawer should show the CoStar id, capture dates with car counts and the
+      Matterport model id. A year-only CoStar row must show leasing as MISSING, not COSTAR.
+- [ ] Rehearse the replan: the agent should ask for one measurement on the leader. Enter the real Matterport value.
 
 ## Rules we keep
 - Real names appear **only** next to real CoStar data. Never put a simulated number next to a real name.
-- A hidden-vacancy dot is a **signal to verify**, never an accusation. The card says so; keep it that way in the pitch.
+- An occupancy dot is an **observation to investigate**, never an accusation. The card says so; keep it that way in the pitch.
 - Keys go in environment variables or `lightwell/config.js`, never into git or chat.
 
 ## If something doesn't arrive
@@ -46,6 +53,6 @@ python backend/import_data.py
 |---|---|
 | CoStar API | Keep simulated market data; the demo still runs on real footprints |
 | Vexcel images | Leave parking.csv empty; those towers stay SIMULATED for aerial |
-| Matterport scans | Plates come from real footprints (tagged OSM/ESTIMATE) |
+| Matterport scans | Plates come from real footprints (OSM/ESTIMATE), cores ASSUMED; the agent asks you for the one that matters |
 | Google 3D key | Photoreal button shows OpenStreetMap buildings in 3D |
 | Anthropic key | Backend runs the fixed plan; offline browser agent as last resort |
