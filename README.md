@@ -161,7 +161,7 @@ real-data/              CSV templates and column guide
 tests/                  engine geometry + parity tests, backend review-and-replan test
 EVENT_DAY.md            hackathon first-hours checklist
 Lightwell-Project-Plan.pdf  project plan
-lightwell.html, lightwell-houston.html, houston-map.html, firetrace-3d.html
+lightwell.html, lightwell-houston.html, houston-map.html
                         earlier single-file prototypes, kept as offline backups
 ```
 
