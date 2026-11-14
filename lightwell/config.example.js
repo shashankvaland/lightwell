@@ -7,6 +7,10 @@ window.LIGHTWELL_CONFIG = {
   GOOGLE_MAPS_API_KEY: "",
   CESIUM_ION_TOKEN: "",
 
+  // In-app street photos from Mapillary (free). Client Token from mapillary.com/dashboard/developers,
+  // starts with "MLY|". Used first by the Street View button; Google is the fallback.
+  MAPILLARY_TOKEN: "",
+
   // Agent backend (backend/app.py). If it isn't running, the app uses its built-in offline agent.
   BACKEND_URL: "http://localhost:8000",
 };

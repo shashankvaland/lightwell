@@ -80,7 +80,7 @@ button.sv{background:rgba(60,198,180,.16);border-color:var(--teal)}
 #svBox.open{opacity:1;transform:none}
 #svBox header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px}
 #svBox header small{display:block;color:var(--muted);font-size:11.5px}
-#pano{flex:1;min-height:0;background:#0e1524}
+#pano,#mly{flex:1;min-height:0;background:#0e1524;position:relative}
 #svMsg{position:absolute;inset:58px 0 0 0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;
   text-align:center;padding:24px;color:var(--muted);background:#0e1524}
 #svMsg b{color:var(--ink);font-size:15px}#svMsg span{max-width:440px}

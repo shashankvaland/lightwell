@@ -42,6 +42,82 @@
     $('svDist').textContent = `Panorama ${Math.round(dist)} m from the tower`;
   }
 
+  // ---------------- Mapillary ----------------
+  const MLY = 'https://unpkg.com/mapillary-js@4.1.2/dist/';
+  let mlyLoading = null;
+  function loadMapillary() {
+    if (window.mapillary) return Promise.resolve();
+    if (mlyLoading) return mlyLoading;
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = MLY + 'mapillary.css'; document.head.appendChild(css);
+    return (mlyLoading = new Promise((res, rej) => { const s = document.createElement('script'); s.src = MLY + 'mapillary.js';
+      s.onload = res; s.onerror = () => rej(new Error('Could not load the Mapillary viewer.')); document.head.appendChild(s); }));
+  }
+  const toRad = d => d * Math.PI / 180;
+  function bearingDist(lon1, lat1, lon2, lat2) {   // degrees clockwise from north, metres
+    const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
+    const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
+    const d = Math.hypot((lon2 - lon1) * 111320 * Math.cos(toRad(lat1)), (lat2 - lat1) * 110540);
+    return [(Math.atan2(y, x) * 180 / Math.PI + 360) % 360, d];
+  }
+  const angDiff = (a, c) => Math.abs(((a - c + 540) % 360) - 180);
+  function hideMly() { $('mly').style.display = 'none'; $('pano').style.display = ''; }
+
+  // Pick the best Mapillary photo near the tower: a 360° panorama close by, or a normal photo that already faces it.
+  async function findMapillary(b, token) {
+    const [lon, lat] = b.center, r = 0.0013;   // ~140 m box (the API caps boxes at 0.01°)
+    const url = `https://graph.mapillary.com/images?access_token=${encodeURIComponent(token)}` +
+      `&bbox=${(lon - r).toFixed(6)},${(lat - r).toFixed(6)},${(lon + r).toFixed(6)},${(lat + r).toFixed(6)}` +
+      `&fields=id,computed_geometry,geometry,computed_compass_angle,compass_angle,is_pano,captured_at&limit=500`;
+    const res = await fetch(url);
+    if (res.status === 401 || res.status === 403) throw new Error('Mapillary rejected the token. Copy the Client Token (starts with MLY|), not the Client ID or Secret.');
+    if (!res.ok) throw new Error('Mapillary returned an error (' + res.status + ').');
+    const rows = (await res.json()).data || [];
+    let best = null;
+    for (const im of rows) {
+      const g = (im.computed_geometry || im.geometry); if (!g) continue;
+      const [ilon, ilat] = g.coordinates, [toTower, dist] = bearingDist(ilon, ilat, lon, lat);
+      if (dist < 12) continue;                                    // standing inside the footprint: useless view
+      const cam = im.computed_compass_angle ?? im.compass_angle;
+      let score;
+      if (im.is_pano) score = dist;
+      else if (cam != null && angDiff(cam, toTower) < 45) score = dist + 25 + angDiff(cam, toTower);
+      else continue;
+      score += Math.min(60, (Date.now() - (im.captured_at || 0)) / (365 * 864e5) * 6);   // prefer recent photos
+      if (!best || score < best.score) best = { ...im, score, dist, toTower };
+    }
+    return { best, count: rows.length };
+  }
+
+  async function openMapillary(b, token) {
+    msg('<span>Finding the nearest Mapillary street photo…</span>');
+    let found;
+    try { found = await findMapillary(b, token); } catch (e) { return e.message; }
+    if (sv.tower !== b) return true;
+    if (!found.best) return found.count ? 'Mapillary has photos near this tower, but none that look toward it.'
+      : 'Mapillary has no street photos within about 140 m of this tower.';
+    try { await loadMapillary(); } catch (e) { return e.message; }
+    $('svMsg').style.display = 'none'; $('pano').style.display = 'none'; $('mly').style.display = '';
+    const im = found.best;
+    // a fresh viewer per tower: moveTo() fails while a previous viewer is still loading
+    if (sv.mly) { try { sv.mly.remove(); } catch (e) { /* already gone */ } }
+    sv.mly = new mapillary.Viewer({ accessToken: token, container: 'mly', imageId: im.id });
+    sv.provider = 'mapillary';
+    const when = im.captured_at ? new Date(im.captured_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short' }) : '';
+    $('svDist').textContent = `Mapillary ${im.is_pano ? '360° panorama' : 'photo'} · ${Math.round(im.dist)} m from the tower${when ? ' · ' + when : ''}`;
+    const faceIt = async () => {   // turn toward the tower: calibrate the view's bearing, then shift horizontally
+      if (!sv.mly) return;
+      try {
+        await sv.mly.setCenter([0.5, 0.55]); const now = await sv.mly.getBearing();
+        const delta = ((found.best.toTower - now + 540) % 360) - 180;
+        if (im.is_pano) await sv.mly.setCenter([(0.5 + delta / 360 + 1) % 1, 0.45]);
+      } catch (e) { /* viewer not ready yet; the default view is close */ }
+    };
+    sv.mly.on('image', function once() { sv.mly.off('image', once); setTimeout(faceIt, 300); });
+    setTimeout(faceIt, 1200);
+    $('svFace').style.display = ''; $('svFace').onclick = faceIt;
+    return true;
+  }
+
   sv.open = async function (b) {
     sv.tower = b;
     $('plateBox').style.display = 'none';
@@ -52,9 +128,17 @@
     await new Promise(r => setTimeout(r, 900));
     $('svBox').style.display = 'flex'; requestAnimationFrame(() => $('svBox').classList.add('open'));
 
-    const key = (window.LIGHTWELL_CONFIG || {}).GOOGLE_MAPS_API_KEY;
-    if (!key) return fail('Add a Google Maps key to <code>lightwell/config.js</code> (GOOGLE_MAPS_API_KEY) with the ' +
-      '<b>Maps JavaScript API</b> enabled. Real street photos only come from Google.');
+    const cfg = window.LIGHTWELL_CONFIG || {};
+    // 1st choice: Mapillary (free). 2nd: Google Street View (needs a billed key). Last: the 3D street level.
+    if (cfg.MAPILLARY_TOKEN) {
+      const r = await openMapillary(b, cfg.MAPILLARY_TOKEN);
+      if (r === true || sv.tower !== b) return;
+      if (!cfg.GOOGLE_MAPS_API_KEY) return fail(r);
+    }
+    const key = cfg.GOOGLE_MAPS_API_KEY;
+    if (!key) return fail('Add a free Mapillary token (MAPILLARY_TOKEN) or a Google Maps key (GOOGLE_MAPS_API_KEY) ' +
+      'to <code>lightwell/config.js</code> to see real street photos here.');
+    hideMly();
     msg('<span>Finding the nearest street photo…</span>');
     try { await loadMaps(key); } catch (e) { return fail(e.message); }
 
