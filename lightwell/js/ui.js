@@ -23,7 +23,7 @@
     $('kCand').textContent = LW.B.length;
     document.querySelectorAll('#dataMode button').forEach(x => x.classList.toggle('on', x.dataset.m === LW.dataMode));
     const n = k => LW.B.filter(b => b.real[k]).length;
-    $('dataNote').innerHTML = (LW.real ? `<b>Imported real data</b> (${esc(LW.real.generated.replace('T', ' '))}): <b>${n('market')}</b> towers with CoStar records, <b>${n('aerial')}</b> with Vexcel parking counts, <b>${n('interior')}</b> with Matterport plates.<br>`
+    $('dataNote').innerHTML = (LW.real ? `<b>Imported real data</b> (${esc(LW.real.generated.replace('T', ' '))}): <b>${n('market')}</b> towers with CoStar records, <b>${n('aerial')}</b> with Vexcel parking counts, <b>${n('interior')}</b> with Matterport plates${LW.real.counts && LW.real.counts.tenants ? `, <b>${LW.real.counts.tenants}</b> current tenancies` : ''}.<br>`
       : '<b>Real:</b> building footprints and heights (OpenStreetMap). No CoStar, Vexcel or Matterport data imported yet.<br>')
       + (LW.dataMode === 'demo' ? '<b>Demo fill-in:</b> towers without real records get SIMULATED values. Real names stay hidden next to simulated numbers.'
         : '<b>Real data only:</b> nothing is simulated. Missing values show as MISSING and any assumption the engine makes is stated.')
@@ -110,7 +110,7 @@
     if (ft.status === 'unknown' || ft.status === 'too_new') return head;
     let body = `<div class="btns"><button id="mvFast" class="${mp && mp.goal === 'fast' ? 'on' : ''}">Plan tenant moves</button><button id="mvEmpty" class="${mp && mp.goal === 'empty' ? 'on' : ''}">Empty the tower</button>${mp ? '<button id="mvClear">Hide</button>' : ''}</div>`;
     if (mp) {
-      body += `<div class="moves"><div class="mvSum"><b>${mp.moves.length}</b> tenants · <b>${mp.freed_floors}</b> floors freed → <b>${fmt(mp.homes_after)}</b> homes can start now (+${fmt(mp.homes_gained)})<br>
+      body += `<div class="moves"><div class="mvSum">${mp.moves.some(m => m.src === 'COSTAR') ? '<i>Hypothetical plan using real CoStar tenants, not their intentions.</i><br>' : ''}<b>${mp.moves.length}</b> tenants · <b>${mp.freed_floors}</b> floors freed → <b>${fmt(mp.homes_after)}</b> homes can start now (+${fmt(mp.homes_gained)})<br>
         Incentives ≈ <b>${LW.bigMoney(mp.cost)}</b>${mp.cost_per_home_gained ? ` · <b>${money(mp.cost_per_home_gained)}</b> per home unlocked` : ''} ${tagFor(b, null, 'ESTIMATE')}<br>
         ${mp.fast_track_after ? '<span class="ok">✓ reaches the 65% fast-track</span>' : '<span class="bad">✗ still short of 65%</span>'}</div>
         ${mp.moves.map(m => `<div class="mv"><span class="tag ${m.src === 'COSTAR' ? 't-cs' : 't-sim'}">${m.src === 'COSTAR' ? 'COSTAR' : 'SIMULATED'}</span>
@@ -158,13 +158,16 @@
     const parkTxt = !obs.length ? 'Parking: no aerial counts' : `Parking ${obs.map((x, i) => `${pct(x)}${b.obsDates ? ` (${esc(b.obsDates[i])})` : ''}`).join(' / ')} full${LW.S.useParking ? '' : ' · ignored by the brief'}`;
     const c = LW.eff(b, 'core') || LW.defaultCore(b.W, b.D);
     const checklist = LW.checklist(b);
+    const cs = b.ev.costar || {}, photo = b.photo && (window.LIGHTWELL_CONFIG || {}).COSTAR_PHOTOS ? String(b.photo) : '';
     $('card').style.display = 'block';
-    $('card').innerHTML = `<h3>${esc(b.label)}${b.label !== b.id ? ` <small style="color:var(--muted)">${b.id}</small>` : ''}</h3>
+    $('card').innerHTML = `${photo ? `<a href="${esc(photo.replace('/112/', '/113/'))}" target="_blank" rel="noopener" title="CoStar photo (opens larger)"><img class="cphoto" src="${esc(photo.replace('/112/', '/110/'))}" alt="${esc(b.label)}: CoStar photo" loading="lazy" onerror="this.parentNode.remove()"></a>` : ''}
+      <h3>${esc(b.label)}${b.label !== b.id ? ` <small style="color:var(--muted)">${b.id}</small>` : ''}</h3>
       <div class="meta">${layers.length ? `Real ${layers.map(k => LAYERS[k]).join(' + ')} data${b.costarId ? ' · CoStar ' + esc(b.costarId) : ''}`
-        : LW.dataMode === 'demo' ? 'Real footprint and height · market data simulated' : 'Real footprint and height · no market records'}${b.owner ? ' · ' + esc(b.owner) : ''}</div>
+        : LW.dataMode === 'demo' ? 'Real footprint and height · market data simulated' : 'Real footprint and height · no market records'}${cs.class ? ' · Class ' + esc(cs.class) : ''}${cs.rating ? ` · ${cs.rating}-star` : ''}${b.owner ? ' · ' + esc(b.owner) : ''}</div>
       <div style="display:flex;justify-content:space-between"><span>Conversion score</span><b>${b.score ?? '–'}/100</b></div>
       <div class="bar"><i style="width:${b.score ?? 0}%;background:${col}"></i></div>
       ${b.pass ? '' : `<div class="why">Doesn't pass the brief: ${esc(b.why.join(' · '))}</div>`}
+      ${b.converted ? `<div class="conv"><b>Already converted</b> (CoStar, ${esc(b.converted)})${b.convertedTo ? `: now ${esc(b.convertedTo)}` : ''}. Downtown Houston offices do become homes.</div>` : ''}
       <div class="big"><div><b>${fmt(p.homes)}</b><span>homes (${p.mix[0]} studio · ${p.mix[1]} 1-bed · ${p.mix[2]} 2-bed)</span></div>
         <div><b>${money(p.cpu)}</b><span>per home vs ~${money(A.newBuildPerHome)} new build</span></div>
         <div><b>${pct(p.daylitFrac)}</b><span>of usable floor is homes within ${LW.S.u} ft of a window${p.day ? ' that sees the sky' : ''}</span></div>
@@ -173,8 +176,9 @@
       ${row(b, 'plate', `Floor plate ${LW.srcOf(b, 'plate') === 'MATTERPORT' ? '' : 'about '}${b.W} × ${b.D} ft${b.irregular ? ' (irregular footprint, simplified)' : ''}`)}
       ${row(b, 'core', `Core ${Math.round(c[2] - c[0])} × ${Math.round(c[3] - c[1])} ft${LW.srcOf(b, 'core') === 'ASSUMED' ? ', assumed central' : ''}`)}
       ${row(b, 'f2f', `${f2f} ft floor-to-floor${f2f < A.f2fHard ? ' (too low for homes)' : f2f < A.f2fMin ? ' (tight for homes)' : ''}`)}
+      ${b.sprinklers === true || b.sprinklers === false ? row(b, 'sprinklers', b.sprinklers ? 'Sprinklers on record' : 'No sprinklers on record: a full retrofit is priced in') : ''}
       ${row(b, 'rep', rep == null ? 'Leased: unknown' : `${pct(rep)} leased`)}
-      ${row(b, 'year', year == null ? 'Year built: unknown' : `Built ${year}`)}
+      ${row(b, 'year', year == null ? 'Year built: unknown' : `Built ${year}${cs.renovated && LW.srcOf(b, 'year') === 'COSTAR' ? ` · renovated ${esc(cs.renovated)}` : ''}`)}
       ${row(b, 'obs', parkTxt)}
       ${row(b, null, `Vacancy signal ${pct(b.vac)} (from ${b.vacBasis})`, b.vacBasis === 'assumed' ? 'ASSUMED' : 'FEASIBILITY')}
       ${row(b, null, p.lw ? `Lightwell cut: ${p.perFloor} homes per floor` : `${p.perFloor} homes per floor along the window walls`, 'FEASIBILITY')}
@@ -189,6 +193,7 @@
       <details class="cl"><summary>Before a site visit (${checklist.length})</summary><ol>${checklist.map(x => `<li>${esc(x.text)}${x.from ? ` <small>· ${esc(x.from)}</small>` : ''}</li>`).join('')}</ol></details>
       <div class="btns"><button id="orbit">Drone orbit</button><button id="street">3D street level</button>
         <button id="sview" class="sv">Street View</button></div>
+      ${(b.models || []).length ? `<div class="btns"><button id="tour" class="sv" title="CoStar's Matterport scans of this building">3D tour inside · Matterport (${b.models.length})</button></div>` : ''}
       <div class="btns"><button id="showPlate">Floor plate</button><button id="fix">Correct data</button></div>
       <div id="fixForm" style="display:none">
         <label class="row">Leased (%) <input id="fRep" type="number" min="0" max="100" placeholder="unknown" value="${rep == null ? '' : Math.round(rep * 100)}"></label>
@@ -203,6 +208,7 @@
     $('showPlate').onclick = () => openPlate(b); $('approve').onclick = () => openMemo(b);
     $('orbit').onclick = () => { $('plateBox').style.display = 'none'; LW.view.orbit(b); };
     $('sview').onclick = () => LW.streetView.open(b);
+    if ($('tour')) $('tour').onclick = () => LW.tour(b);
     if ($('mvFast')) { $('mvFast').onclick = () => planFor(b, 'fast'); $('mvEmpty').onclick = () => planFor(b, 'empty'); }
     if ($('mvClear')) $('mvClear').onclick = () => LW.showMoves(null);
     $('card').querySelectorAll('[data-go]').forEach(a => a.onclick = e => { e.preventDefault(); const t = LW.B.find(x => x.id === a.dataset.go); if (t) LW.onSelect(t, true); });
@@ -228,12 +234,12 @@
 
   // ---------- evidence drawer ----------
   const kv = rows => `<table class="kv">${rows.filter(r => r[1] != null && r[1] !== '').map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`;
-  const FIELD = { vacant: 'Empty floors', floors: 'Floors and height', plate: 'Floor plate', core: 'Core', f2f: 'Floor-to-floor height', rep: 'Percent leased', year: 'Year built', obs: 'Parking occupancy', fire: 'Preliminary fire screen', texas: 'Texas conversion fast-track', daylight: 'Daylight from neighbours', '': 'Calculated value' };
+  const FIELD = { sprinklers: 'Sprinklers', vacant: 'Empty floors', floors: 'Floors and height', plate: 'Floor plate', core: 'Core', f2f: 'Floor-to-floor height', rep: 'Percent leased', year: 'Year built', obs: 'Parking occupancy', fire: 'Preliminary fire screen', texas: 'Texas conversion fast-track', daylight: 'Daylight from neighbours', '': 'Calculated value' };
   const SRC_TXT = {
     OSM: 'From the OpenStreetMap building record (footprint, height or levels tags).',
     ESTIMATE: 'Estimated by Lightwell from other values; not measured.',
     ASSUMED: 'Assumed by Lightwell because no measurement is loaded.',
-    COSTAR: 'From the imported CoStar property record.', VEXCEL: 'From imported Vexcel aerial captures (car counts per capture).',
+    COSTAR: 'From the CoStar data kit (property, tenancy, listing and sale records), imported with backend/costar_kit.py. Derived values say how below.', VEXCEL: 'From imported Vexcel aerial captures (car counts per capture).',
     MATTERPORT: 'From the imported Matterport scan record.',
     SIMULATED: 'Demo stand-in from a seeded random generator. Not real data; never shown next to a real building name.',
     MISSING: 'No value in any loaded data layer.', YOU: 'Corrected by you in this session.',
@@ -245,7 +251,14 @@
     if (k === 'rep' || k === 'year') {
       if (b.ev.costar) parts.push('<h4>CoStar record</h4>' + kv([['CoStar id', b.ev.costar.costar_id], ['Address', b.ev.costar.address], ['Owner', b.ev.costar.owner],
         ['Leased', b.ev.costar.leased != null ? pct(b.ev.costar.leased) : 'not in record'], ['Year built', b.ev.costar.year ?? 'not in record'],
-        ['RBA (sq ft)', b.ev.costar.rba_sqft ? fmt(b.ev.costar.rba_sqft) : null], ['Matched to footprint', b.ev.costar.match]]));
+        ['RBA (sq ft)', b.ev.costar.rba_sqft ? fmt(b.ev.costar.rba_sqft) : null], ['Renovated', b.ev.costar.renovated], ['Matched to footprint', b.ev.costar.match]]));
+      const c = b.ev.costar || {};
+      if (k === 'rep' && c.leased_method) parts.push('<h4>How the CoStar records give this</h4>' + kv([['Method', c.leased_method],
+        ['Space on the market (all)', c.available_sqft != null ? fmt(c.available_sqft) + ' sq ft' : null],
+        ['Vacant direct space now', c.vacant_now_sqft != null ? fmt(c.vacant_now_sqft) + ' sq ft' : null],
+        ['Current tenancies', c.tenants_current != null ? `${c.tenants_current} (${c.tenants_with_lease_end || 0} with a lease end on record)` : null],
+        ['Occupied by current tenancies', c.leased_tenancy != null ? `${c.leased_tenancy}% of RBA (tenancy records can be incomplete)` : null],
+        ['Share leased at its latest sale', c.sale_leased != null ? `${c.sale_leased}% (${c.sale_date})` : null]]));
       if (k === 'year' && LW.eff(b, 'year') == null) parts.push(`<p>Engine assumption: costs use ${LW.A.unknownYear} (abatement and sprinkler retrofit included), age fit neutral.</p>`);
       if (k === 'rep' && LW.eff(b, 'rep') == null) parts.push(`<p>Engine assumption: vacancy from ${b.vacBasis}${b.vacBasis === 'assumed' ? ` (${pct(LW.A.unknownVacancy)}, Houston average)` : ''}.</p>`);
     }
@@ -255,6 +268,7 @@
         An office building at least 5 years old can be converted to homes without rezoning, a traffic study or extra parking, if at least 65% of the building and of each occupied floor becomes residential.</p>
         <p>Lightwell's screen: the ground floor stays lobby or retail; every other floor counts as residential only when it is fully empty (whole-floor conversion). Floors still leased stay offices until a tenant moves or a lease ends.
         This is a screening rule, not legal advice: confirm with a land-use lawyer and the City of Houston.</p>`
+        + (Array.isArray(b.tenants) ? `<p><b>Tenants:</b> ${b.tenants.length} current CoStar tenancies on office floors, ${b.tenants.filter(t => t.lease_end != null).length} with a lease end on record. A floor shared by several tenants counts as freed only when all of them move; a lease with no end on record assumes ${LW.A.unknownLeaseYrs} more years of concessions.</p>` : '')
         + kv([['Floors', ft.floors], ['Residential floors needed (65%)', ft.need], ['Floors empty now', ft.free ?? 'unknown'], ['Floors to free', ft.short ?? 'unknown'],
           ['Building age', ft.ageKnown ? ft.age + ' years' : 'unknown'], ['Status', LW.FT_LABEL[ft.status]]])
         + `<p class="note">Sources: <a href="https://www.foley.com/insights/publications/2025/11/client-briefing-texas-senate-bill-840-and-texas-senate-bill-2477-89th-legislatu/" target="_blank" rel="noopener">Foley briefing on SB 840 / SB 2477</a> · <a href="https://capitol.texas.gov/BillLookup/History.aspx?LegSess=89R&Bill=SB840" target="_blank" rel="noopener">Texas Legislature: SB 840</a></p>`);
@@ -262,6 +276,7 @@
     if (k === 'vacant') {
       if (b.ev.costar && b.ev.costar.vacant_floors) parts.push('<h4>CoStar available space</h4>' + kv([['CoStar id', b.ev.costar.costar_id], ['Floors with available space', b.ev.costar.vacant_floors.join(', ')]]));
       else if (LW.srcOf(b, 'vacant') === 'SIMULATED') parts.push('<p>Simulated from the (simulated) leased share: empty space placed in blocks of whole floors.</p>');
+      if (LW.srcOf(b, 'vacant') === 'COSTAR' && b.ev.costar && b.ev.costar.leased_method) parts.push(`<p>From CoStar's listings: a floor counts as empty when vacant direct space on the market now covers 80% or more of the typical floor${b.ev.costar.typical_sqft ? ` (${fmt(b.ev.costar.typical_sqft)} sq ft)` : ''}, or a full-floor space is vacant. A tower with no tenant and no listing that sold at 0% leased counts as empty on every floor.</p>`);
       parts.push('<p>Phase one = the biggest block of consecutive empty floors, converted first while the rest stays leased.</p>');
     }
     if (k === 'obs') {
@@ -275,6 +290,10 @@
     if (k === 'plate' || k === 'core' || k === 'f2f' || k === 'floors') {
       if (b.ev.matterport) { const I = b.ev.matterport; parts.push('<h4>Matterport record</h4>' + kv([['Model id', I.model_id], ['Scanned', I.scanned ? 'yes' : 'no'],
         ['Plate', I.W && I.D ? `${I.W} × ${I.D} ft` : null], ['Floor-to-floor', I.f2f ? I.f2f + ' ft' : null], ['Core', I.core ? I.core.map(Math.round).join(', ') + ' (x0, y0, x1, y1 ft)' : null]])); }
+      const c = b.ev.costar;
+      if (c) parts.push('<h4>CoStar property record</h4>' + kv([['CoStar id', c.costar_id], ['Storeys', c.floors], ['Class / rating', c.class ? `${c.class}${c.rating ? ', ' + c.rating + '-star' : ''}` : null],
+        ['Typical floor', c.typical_sqft ? fmt(c.typical_sqft) + ' sq ft' : null], ['Height used', c.height_m ? `${c.height_m} m (${c.height_src === 'COSTAR' ? "CoStar's height" : 'CoStar storeys x 13 ft, an estimate'}): OpenStreetMap's height did not fit the storey count` : null],
+        ['Floor-to-floor check', c.f2f_note]]));
       parts.push('<h4>OpenStreetMap</h4>' + kv([['OSM way', b.osmId], ['Height', b.heightM + ' m'], ['Footprint', fmt(b.footprint) + ' sq ft'], ['Simplified plate', `${b.W} × ${b.D} ft (minimum rectangle)`]]));
       if (k === 'f2f' && LW.srcOf(b, 'f2f') === 'ESTIMATE') parts.push(`<p>Estimate: height ÷ ${LW.srcOf(b, 'floors') === 'ESTIMATE' ? 'a floor count that was itself estimated from height (3.9 m a floor), so this is close to an assumption' : 'floor count'}. A scan or section drawing replaces it.</p>`);
       if (k === 'core' && LW.srcOf(b, 'core') === 'ASSUMED') parts.push('<p>Assumed: a central core about 26% of the plate width and 20% of its depth (at least 40 × 30 ft). The real core can be larger in older towers.</p>');
@@ -297,6 +316,8 @@
         if (open.length) parts.push(`<p>Open to the sky at ${d.lim}° on every floor: ${open.map(w => wallName(b, w) + (b.day.edge[w] ? ' (faces the edge of our data, so this may be optimistic)' : '')).join('; ')}.</p>`);
       }
     }
+    if (k === 'sprinklers') parts.push(`<p>CoStar's property record ${b.sprinklers ? 'says the building has sprinklers, so no sprinkler retrofit is priced in' : `has no sprinklers for this building, so a full sprinkler retrofit ($${LW.A.sprinklerPerSqft}/sq ft) is priced in and noted on the fire screen`}. Without a CoStar record, towers built before 1975 are assumed to need one.</p>`
+      + (b.ev.costar ? kv([['CoStar id', b.ev.costar.costar_id]]) : ''));
     if (k === 'fire') parts.push(`<p><b>${LW.SAFE_LABEL[sf.status]}.</b> This is an estimate from the plate and the core rectangle. Stair locations and corridors are not known.</p>`
       + '<h4>Measured</h4><ul>' + sf.measured.map(x => `<li>${esc(x)} (${esc(LW.srcOf(b, 'plate'))})</li>`).join('') + '</ul>'
       + '<h4>Assumed</h4><ul>' + sf.assumed.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>'
@@ -502,7 +523,8 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
   const AS = [['costPerSqft', 'Conversion cost ($/sq ft)', 1], ['lightwellPerSqft', 'Lightwell cut ($/sq ft removed)', 1], ['sprinklerPerSqft', 'Sprinkler retrofit ($/sq ft)', 1],
     ['newBuildPerHome', 'New-build cost per home ($)', 1], ['carbonKgPerM2', 'New-build carbon (kg CO₂e/m²)', 1], ['reuseSaving', 'Carbon avoided by reuse (%)', 100],
     ['maxTravelFt', 'Max travel to a stair (ft)', 1], ['f2fHard', 'Lowest usable floor-to-floor (ft)', 1],
-    ['moveCostSqft', 'Tenant move allowance ($/sq ft)', 1], ['buyoutSqftYr', 'Early lease exit ($/sq ft/yr left)', 1]];
+    ['moveCostSqft', 'Tenant move allowance ($/sq ft)', 1], ['buyoutSqftYr', 'Early lease exit ($/sq ft/yr left)', 1],
+    ['unknownLeaseYrs', 'Lease end not on record: years left', 1]];
   function buildAssumptions() {
     $('assume').innerHTML = AS.map(([k, label, m]) => `<label class="row">${label}<input data-k="${k}" data-m="${m}" type="number" step="${k === 'f2fHard' ? 0.5 : 1}" value="${+(LW.A[k] * m).toFixed(1)}"></label>`).join('');
     $('assume').querySelectorAll('input').forEach(inp => inp.oninput = () => { const v = +inp.value; if (!isFinite(v) || v <= 0) return;
@@ -557,6 +579,20 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
       : 'No empty-floor data: import CoStar available-space floors';
     LW.view.setFloors(LW.floorsOn);
   };
+
+  // ---------- Matterport 3D tour: CoStar's scans of the building (an SDK key in config.js is passed on when set) ----------
+  LW.tour = function (b) {
+    const ms = b.models || [], key = (window.LIGHTWELL_CONFIG || {}).MATTERPORT_SDK_KEY; if (!ms.length) return;
+    const show = id => { const m = encodeURIComponent(id);
+      $('mpFrame').src = `https://my.matterport.com/show/?m=${m}&play=1&qs=1${key ? '&applicationKey=' + encodeURIComponent(key) : ''}`;
+      $('mpOpen').href = `https://my.matterport.com/show/?m=${m}`; };
+    $('mpTitle').textContent = `${b.label} · 3D tour`;
+    $('mpNote').textContent = `${ms.length} Matterport scan${ms.length > 1 ? 's' : ''} from the CoStar data kit · tours may show a suite or the lobby, not a whole floor`;
+    $('mpModel').innerHTML = ms.map((m, i) => `<option value="${esc(m)}">Scan ${i + 1} of ${ms.length}</option>`).join('');
+    $('mpModel').onchange = () => show($('mpModel').value);
+    show(ms[0]); $('mpBox').style.display = 'flex';
+  };
+  $('mpClose').onclick = () => { $('mpBox').style.display = 'none'; $('mpFrame').src = 'about:blank'; };
 
   // ---------- Daylight X-ray view toggle ----------
   LW.dayViewOn = false;

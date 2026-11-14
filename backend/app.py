@@ -1,7 +1,8 @@
 """Lightwell backend: streams agent steps to the browser.
 
 Run:  uvicorn app:app --port 8000      (from the backend/ folder)
-Set ANTHROPIC_API_KEY in your environment to use Claude through deepagents; without it the fixed plan runs.
+Set ANTHROPIC_API_KEY (in the project's .env file, or your environment) to use Claude through deepagents; without it
+the fixed plan runs.
 """
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+import env  # noqa: F401  (loads the project's .env before the agent reads its settings)
 from agent import MODEL, Session, run_llm, run_scripted
 
 app = FastAPI(title="Lightwell backend")

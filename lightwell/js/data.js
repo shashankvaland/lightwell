@@ -50,7 +50,8 @@
       if (!ok && !(real && (p.heightSource !== 'default' || real.floors >= 6))) continue;
       const i = B.length, rnd = mulberry(p.id % 100000 + 7);
       const osmHeight = p.heightSource !== 'default', osmLevels = p.levels && p.levels !== 'null';
-      const heightM = osmHeight ? p.height : Math.round(real.floors * 3.9);
+      // CoStar replaces an OpenStreetMap height that is missing or does not fit the storey count (backend/costar_kit.py)
+      const heightM = real && real.height_m ? real.height_m : osmHeight ? p.height : Math.round(real.floors * 3.9);
       const floors = real && real.floors ? real.floors : osmLevels ? +p.levels : Math.round(heightM / 3.9);
       // ---- SIMULATED stand-ins (drawn for every tower so the random sequence is stable; used only in demo mode) ----
       const sYear = Math.round(1965 + rnd() * 50);
@@ -69,7 +70,7 @@
         scanned: false, core: null, forceLW: null, overrides: {}, score: null,
         real: { market: false, aerial: false, interior: false, floors: false }, vacantFloors: [],
         src: {
-          heightM: osmHeight ? 'OSM' : 'COSTAR', floors: real && real.floors ? 'COSTAR' : osmLevels ? 'OSM' : 'ESTIMATE',
+          heightM: real && real.height_m ? (real.height_src || 'COSTAR') : osmHeight ? 'OSM' : 'ESTIMATE', floors: real && real.floors ? 'COSTAR' : osmLevels ? 'OSM' : 'ESTIMATE',
           plate: irregular ? 'ESTIMATE' : 'OSM', f2f: 'ESTIMATE', core: 'ASSUMED',
           rep: simulate ? 'SIMULATED' : 'MISSING', year: simulate ? 'SIMULATED' : 'MISSING', obs: simulate ? 'SIMULATED' : 'MISSING',
           vacant: simulate ? 'SIMULATED' : 'MISSING',
@@ -108,12 +109,21 @@
 
   function applyReal(b, real) {
     b.costarId = real.costar_id; b.owner = real.owner || null;
-    b.name = real.address || ('CoStar ' + real.costar_id); b.real.market = true;
+    b.name = real.name || real.address || ('CoStar ' + real.costar_id); b.address = real.address || null; b.real.market = true;
     b.ev.costar = { costar_id: real.costar_id, address: real.address || null, owner: real.owner || null, leased: real.leased,
       year: real.year, rba_sqft: real.rba_sqft, floors: real.floors, match: real.match || null };
+    // everything else the CoStar data kit gives (backend/costar_kit.py): kept for the card and the evidence drawer
+    for (const k of ['name', 'class', 'rating', 'renovated', 'height_m', 'height_src', 'typical_sqft', 'f2f', 'f2f_note', 'sprinklers',
+      'parking_spaces', 'converted', 'converted_to', 'leased_method', 'leased_tenancy', 'sale_leased', 'sale_date', 'available_sqft',
+      'vacant_now_sqft', 'tenants_current', 'tenants_with_lease_end', 'models']) if (real[k] != null) b.ev.costar[k] = real[k];
     if (real.leased != null) { b.rep = real.leased; b.src.rep = 'COSTAR'; }
     if (real.year != null) { b.year = real.year; b.src.year = 'COSTAR'; }
     if (real.rba_sqft) b.rba = real.rba_sqft;
+    if (real.f2f) { b.f2f = real.f2f; b.src.f2f = 'COSTAR'; }   // slab-to-slab, only when it agrees with the building's height
+    if (real.sprinklers === true || real.sprinklers === false) { b.sprinklers = real.sprinklers; b.src.sprinklers = 'COSTAR'; }
+    if (real.converted) { b.converted = real.converted; b.convertedTo = real.converted_to || null; }
+    if (Array.isArray(real.tenants)) b.tenants = real.tenants.map(t => ({ ...t, src: 'COSTAR' }));   // current tenancies (tenant moves)
+    b.photo = real.photo || null; b.models = real.models || [];
     if (Array.isArray(real.vacant_floors)) {
       b.vacantFloors = real.vacant_floors.filter(f => f >= 2 && f <= b.floors).sort((a, c) => a - c); b.real.floors = true; b.src.vacant = 'COSTAR';
       b.ev.costar.vacant_floors = real.vacant_floors;

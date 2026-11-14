@@ -89,7 +89,7 @@ Open http://localhost:8765/lightwell/index.html. The page looks for the backend 
 needed). The badge under *Run agent* says which agent is running; if the backend isn't up, or fails mid-run, the page
 switches to the built-in offline agent and the badge says so.
 
-- With `ANTHROPIC_API_KEY` set, the agent is **Claude running through LangChain deepagents**: a planner with five
+- With `ANTHROPIC_API_KEY` set (in `.env`, see the keys table below), the agent is **Claude running through LangChain deepagents**: a planner with five
   sub-agents (market-analyst, feasibility-engineer, policy-analyst, deal-maker, red-team). The strip under *Run agent*
   lights up whichever one is working.
   Change the model with `LIGHTWELL_MODEL`.
@@ -124,7 +124,17 @@ python backend/daylight.py --heights real-data/heights.csv   # columns osm_id,he
 
 ## Adding real data (CoStar, Vexcel, Matterport)
 
-Save API results as the three CSVs described in [real-data/README.md](real-data/README.md), then run:
+**CoStar data kit (HackPrinceton).** Put CoStar's `costar-hackathon-kit` folder next to the project folder (or set
+`COSTAR_KIT_DIR` in `.env`), then:
+```bash
+python backend/costar_kit.py     # downtown office towers + current tenants -> real-data/costar.csv, tenants.csv
+python backend/import_data.py    # -> lightwell/data/real_overlay.js; reload the page
+```
+The towers then carry their CoStar name, class and rating, percent leased (CoStar's formula, from the listings), empty
+floors, slab-to-slab height, sprinklers, year built and renovated, and their real tenants for the tenant-move planner. A
+building CoStar records as converted never passes. [real-data/README.md](real-data/README.md) says how each value is
+made, how to add Matterport floor plates (`backend/matterport.py`) and Vexcel counts, and lists the CSV columns for
+adding data by hand:
 ```bash
 python backend/import_data.py
 ```
@@ -134,6 +144,19 @@ tagged by its own source, and anything missing stays MISSING (the engine states 
 average vacancy). **Demo fill-in** simulates values only on anonymous towers, never next to a real name.
 
 The agent's CoStar, Vexcel and Matterport tools read these imported values; they don't call the sponsor APIs live. `backend/count_cars.py` counts cars in an aerial lot image with Claude.
+
+### Keys: where each one goes
+| Key | Put it in | Used for |
+|---|---|---|
+| Matterport **SDK key** | `lightwell/config.js` → `MATTERPORT_SDK_KEY` | the 3D tour of CoStar's scans (it also opens without the key; the key's allowed domain is `localhost`) |
+| Matterport **API key** | `.env` → `MATTERPORT_API_KEY` | `backend/matterport.py`: floor plates measured from the scans |
+| Matterport **API token** | `.env` → `MATTERPORT_API_TOKEN` | same (Matterport's names: API Token ID and Token Secret) |
+| Vexcel **api_key** | `.env` → `VEXCEL_API_KEY` | aerial parking images (the download step needs Vexcel's quickstart) |
+| Anthropic API key | `.env` → `ANTHROPIC_API_KEY` | the Claude agent (deepagents) and `count_cars.py` |
+| Google Maps key or Cesium ion token, Mapillary token | `lightwell/config.js` | Photoreal 3D and street photos |
+
+Copy `.env.example` to `.env` and `lightwell/config.example.js` to `lightwell/config.js`; both copies are git-ignored.
+Restart the backend after editing `.env`. The CoStar data kit itself needs no key.
 The first-hours plan for the hackathon is in [EVENT_DAY.md](EVENT_DAY.md). Real data files are git-ignored.
 
 ## Real vs simulated
@@ -145,8 +168,10 @@ The first-hours plan for the hackathon is in [EVENT_DAY.md](EVENT_DAY.md). Real 
 | Google photoreal city (with your key) | Interior scans: core, floor-to-floor (Matterport). Until then cores are ASSUMED and floor-to-floor is an ESTIMATE |
 | Neighbour heights for Daylight X-ray (OpenStreetMap, 231 buildings) | 989 of 1,220 footprints have no OSM height: drawn at 8 m and tagged ESTIMATE until Vexcel heights are imported |
 
-Real building names are hidden (towers show as HOU-01, HOU-02...) until real market data is loaded, so an invented
-number is never attached to a real, named building. An occupancy dot is an observation to investigate, never an accusation.
+With the CoStar data kit imported, the downtown office towers it covers use real CoStar values (tagged COSTAR) for
+leasing, year built, empty floors, sprinklers, slab-to-slab height and tenants; the other towers stay simulated (demo)
+or MISSING (real data only). Real building names are hidden (towers show as HOU-01, HOU-02...) until real market data
+is loaded, so an invented number is never attached to a real, named building. An occupancy dot is an observation to investigate, never an accusation.
 
 ## How it works
 
@@ -196,6 +221,9 @@ backend/
   daylight.py           Daylight X-ray precompute: neighbouring buildings seen from every wall
   app.py                FastAPI server streaming agent steps (SSE)
   import_data.py        joins real-data/*.csv to the map
+  costar_kit.py         CoStar data kit -> real-data/costar.csv + tenants.csv
+  matterport.py         Matterport Model API -> real-data/interiors.csv (floor plates from scans)
+  env.py                loads keys from the project's .env
   count_cars.py         Claude vision car counter for aerial images
 real-data/              CSV templates and column guide
 tests/                  engine geometry + parity tests, backend review-and-replan test

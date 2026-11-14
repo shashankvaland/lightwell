@@ -4,7 +4,8 @@ to real-data/parking.csv.
     python backend/count_cars.py lot.jpg --costar-id 1234567 --date 2026-11-14
     python backend/count_cars.py lot.jpg --costar-id 1234567 --date 2026-11-14 --dry-run   # print only
 
-Needs ANTHROPIC_API_KEY (or an `ant auth login` profile). Hand-check a few lots before trusting the counts.
+Needs ANTHROPIC_API_KEY (in the project's .env file, or an `ant auth login` profile). Hand-check a few lots before
+trusting the counts.
 """
 from __future__ import annotations
 
@@ -17,6 +18,8 @@ import sys
 from pathlib import Path
 
 import anthropic
+
+import env  # noqa: F401  (loads ANTHROPIC_API_KEY from the project's .env)
 
 ROOT = Path(__file__).resolve().parent.parent
 MODEL = "claude-opus-5-5"
@@ -75,7 +78,11 @@ def main():
     except anthropic.APIConnectionError:
         sys.exit("Network error reaching the Claude API.")
     except anthropic.AuthenticationError:
-        sys.exit("No valid Anthropic credentials: set ANTHROPIC_API_KEY or run `ant auth login`.")
+        sys.exit("The Anthropic key was rejected: check ANTHROPIC_API_KEY in the project's .env file.")
+    except TypeError as e:   # the SDK raises this when it finds no credentials at all
+        if "auth" not in str(e).lower():
+            raise
+        sys.exit("No Anthropic credentials: put ANTHROPIC_API_KEY in the project's .env file (see .env.example) or run `ant auth login`.")
     except anthropic.APIStatusError as e:
         sys.exit(f"Claude API error {e.status_code}: {e.message}")
 
