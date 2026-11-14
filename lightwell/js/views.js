@@ -225,7 +225,7 @@
       if (wantGoogle) {
         try {
           const ts = await Cesium.createGooglePhotorealistic3DTileset();
-          v.scene.primitives.add(ts); this.mode = 'google';
+          v.scene.primitives.add(ts); this.mode = 'google'; this.tileset = ts;
         } catch (e) {
           this.error = 'Google 3D tiles did not load (' + (e.message || e) + '). Showing OpenStreetMap buildings instead.';
           // the viewer was created without a globe; add one back so the fallback has ground
@@ -264,11 +264,12 @@
         const vf = Cesium.PerInstanceColorAppearance.VERTEX_FORMAT, cand = new Set(LW.B.map(b => b.osmId));
         const others = LW.geo.features.filter(f => !cand.has(f.properties.id)).map(f =>
           this._poly(f.geometry.coordinates[0], 0, f.properties.height, Cesium.Color.fromCssColorString('#2a3550'), 'o:' + f.properties.id, vf));
+        // sun shadows: the boxes cast them onto the ground; they don't receive them (on flat boxes that shows as striped "shadow acne")
         v.scene.primitives.add(new Cesium.Primitive({ asynchronous: false, geometryInstances: others,
-          appearance: new Cesium.PerInstanceColorAppearance({ translucent: false, flat: false }) }));
+          appearance: new Cesium.PerInstanceColorAppearance({ translucent: false, flat: false }), shadows: Cesium.ShadowMode.CAST_ONLY }));
         this.prim = v.scene.primitives.add(new Cesium.Primitive({ asynchronous: false,
           geometryInstances: LW.B.map(b => this._poly(b.ring, 0, b.heightM, this._base(), 'b:' + b.idx, vf)),
-          appearance: new Cesium.PerInstanceColorAppearance({ translucent: false, flat: false }) }));
+          appearance: new Cesium.PerInstanceColorAppearance({ translucent: false, flat: false }), shadows: Cesium.ShadowMode.CAST_ONLY }));
       }
       this.flags = new Cesium.CustomDataSource('flags'); v.dataSources.add(this.flags);
     },
@@ -362,11 +363,22 @@
         }
         this.dayPrim = this.viewer.scene.primitives.add(google
           ? new Cesium.ClassificationPrimitive({ asynchronous: false, classificationType: Cesium.ClassificationType.CESIUM_3D_TILE, geometryInstances: insts })
-          : new Cesium.Primitive({ asynchronous: false, geometryInstances: insts, appearance: new Cesium.PerInstanceColorAppearance({ translucent: false, flat: false }) }));
+          : new Cesium.Primitive({ asynchronous: false, geometryInstances: insts, appearance: new Cesium.PerInstanceColorAppearance({ translucent: false, flat: false }),
+            shadows: Cesium.ShadowMode.CAST_ONLY }));
       }
       if (this.dayPrim) this.dayPrim.show = on;
       if (this.prim) this.prim.show = !on && !LW.floorsOn;
       this.viewer.scene.requestRender();
+    },
+
+    // ---- sun and shadows: the real sun position over Houston on a chosen day and hour ----
+    setSun(on, month, hour) {   // month 0-based (5 = June, 11 = December); hour = Houston local time
+      if (!this.ready) return; const v = this.viewer, off = month >= 2 && month <= 10 ? 5 : 6;   // CDT / CST
+      v.shadows = on; if (this.tileset) this.tileset.shadows = on ? Cesium.ShadowMode.ENABLED : Cesium.ShadowMode.DISABLED;
+      if (v.shadowMap) { v.shadowMap.softShadows = true; v.shadowMap.maximumDistance = 2500; }
+      v.clock.shouldAnimate = false;
+      v.clock.currentTime = Cesium.JulianDate.fromDate(new Date(Date.UTC(2026, month, 21, Math.floor(hour) + off, Math.round((hour % 1) * 60))));
+      v.scene.requestRender();
     },
 
     // ---- camera modes ----

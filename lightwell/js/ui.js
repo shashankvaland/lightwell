@@ -526,13 +526,22 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
     prev.stopOrbit(); prev.select(null, LW.selected); LW.refresh(); next.select(LW.selected, null);
     next.setFloors(LW.floorsOn); next.setDaylight(LW.dayViewOn); if (next.setMoves) next.setMoves(LW.movePlan);
     if (LW.selected) next.fly(LW.selected);
-    placeLegends();
+    $('sunBar').style.display = name === 'g3d' ? 'flex' : 'none'; placeLegends(); placeSun();
   }
   // The view legends sit just under the view note (shown in Photoreal 3D) instead of behind it.
   function placeLegends() { const n = $('viewNote'), top = n.style.display === 'block' ? Math.round(n.getBoundingClientRect().bottom + 6) + 'px' : '';
     $('floorsLegend').style.top = top; $('dayLegend').style.top = top; }
   document.querySelectorAll('#views button[data-v]').forEach(x => x.onclick = () => switchView(x.dataset.v));
   LW.switchView = switchView;
+
+  // ---------- sun and shadows (Photoreal 3D): shadows start off, for speed ----------
+  const clock = h => `${(Math.floor(h) + 11) % 12 + 1}:${String(Math.round((h % 1) * 60)).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+  function sun() { $('sunL').textContent = clock(+$('sunHour').value); LW.views.g3d.setSun($('sunOn').checked, +$('sunDay').value, +$('sunHour').value); }
+  $('sunOn').onchange = sun; $('sunDay').onchange = sun; $('sunHour').oninput = sun; $('sunL').textContent = clock(+$('sunHour').value);
+  // the sun bar and the floor plate share the bottom centre: lift the bar above the plate while it is open
+  function placeSun() { const p = $('plateBox'); $('sunBar').style.bottom = p.style.display === 'block' ? Math.round(innerHeight - p.getBoundingClientRect().top + 8) + 'px' : ''; }
+  new MutationObserver(placeSun).observe($('plateBox'), { attributes: true, attributeFilter: ['style'] });
+  addEventListener('resize', placeSun);
 
   // ---------- empty floors toggle ----------
   LW.floorsOn = false;

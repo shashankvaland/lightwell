@@ -14,6 +14,9 @@
 <div id="floorsLegend"><span><i style="background:#f5b942"></i>Empty floor</span><span><i style="background:#3a4766;opacity:.6"></i>Leased floor</span><span class="muted" id="floorsSum"></span></div>
 <div id="dayLegend"><span><i style="background:#f5b942"></i>All homes see the sky</span><span><i style="background:#3a4766"></i>None do</span><span><i style="background:#3b4254"></i>No data</span><span class="muted" id="daySum"></span></div>
 <div id="viewNote"></div>
+<div id="sunBar"><label class="chk"><input type="checkbox" id="sunOn"> Sun &amp; shadows</label>
+  <select id="sunDay" aria-label="Day of the year"><option value="11">Dec 21</option><option value="5">Jun 21</option></select>
+  <input id="sunHour" type="range" min="7" max="19" step="0.25" value="15" aria-label="Hour, Houston time"><b id="sunL"></b></div>
 <div id="toast"></div>
 
 <aside id="left">
