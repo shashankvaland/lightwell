@@ -10,6 +10,12 @@ that would change its recommendation, and drafts the owner memo.
 
 Built for **HackPrinceton F26** · Main track: **Best Sustainability Hack**
 
+**Why now:** since 1 September 2025, Texas SB 840 and SB 2477 let an office building at least 5 years old become homes
+without rezoning, traffic studies or extra parking, if at least 65% of it becomes residential. Houston qualifies. But a
+tower that is 40% empty can't reach 65% while tenants sit on scattered floors. Lightwell's agent team checks the 65% rule
+on every tower and plans the **tenant moves** into nearby half-empty offices that would unlock it, and a **red-team agent**
+attacks the plan before you see it. The app opens with a short, sourced screen on the law and the problem (*Why now?* reopens it).
+
 ---
 
 ## What it does
@@ -31,7 +37,14 @@ Built for **HackPrinceton F26** · Main track: **Best Sustainability Hack**
 8. **Review and replan:** the agent tests a worse plausible value for every estimated, assumed or simulated input on the
    shortlist. If one would change the decision, it pauses and asks you for that measurement, then re-ranks and explains
    what changed (*"HOU-53 now fails: floor-to-floor under 10.5 ft. New leader: HOU-34"*).
-9. **Human in the loop:** correct any value, then approve the memo the agent reviewed. The memo is marked *not
+9. **Texas fast-track screen (SB 840 / SB 2477):** floors needed for 65% homes, floors empty now, building age. A screen,
+   not legal advice.
+10. **Tenant moves:** reads tenants and leases (CoStar records when imported, simulated otherwise), picks the tenants whose
+    leases end soonest, moves each into the nearest tower with room (preferring towers that are poor conversion candidates,
+    so they stay offices and fill up), and prices the incentives. Gold arcs on the map show every move.
+11. **Red team:** attacks the move plan (long leases, far moves, receivers that are themselves good conversions, unverified
+    age, simulated data). If the plan is weak, the planner tries the next tower.
+12. **Human in the loop:** correct any value, then approve the memo the agent reviewed. The memo is marked *not
    reviewed* as soon as the brief, an assumption, a correction or the lightwell choice changes. Export a portfolio memo
    and a CSV with a source column per field.
 
@@ -70,7 +83,9 @@ Open http://localhost:8765/lightwell/index.html. The page looks for the backend 
 needed). The badge under *Run agent* says which agent is running; if the backend isn't up, or fails mid-run, the page
 switches to the built-in offline agent and the badge says so.
 
-- With `ANTHROPIC_API_KEY` set, the agent is **Claude running through LangChain deepagents**.
+- With `ANTHROPIC_API_KEY` set, the agent is **Claude running through LangChain deepagents**: a planner with five
+  sub-agents (market-analyst, feasibility-engineer, policy-analyst, deal-maker, red-team). The strip under *Run agent*
+  lights up whichever one is working.
   Change the model with `LIGHTWELL_MODEL`.
 - Without a key, the backend runs the same tools in a fixed order, so the demo never depends on the network.
 
@@ -124,6 +139,9 @@ number is never attached to a real, named building. An occupancy dot is an obser
  You ask ──► brief ──► Planner (deepagents) ──► market-analyst ──► CoStar records, Vexcel counts, occupancy discrepancies
                                │             └─► feasibility-engineer ──► floor plates, daylight test, lightwell, cost, fire screen
                                ├─► review_evidence ──► request_measurement (you answer) ──► re-rank, explain the change
+                               ├─► policy-analyst ──► Texas 65% fast-track per tower
+                               ├─► deal-maker ──► tenants + leases ──► tenant moves, incentive cost, homes unlocked
+                               ├─► red-team ──► objections; weak plan → next tower
                                └─► draft_owner_memo ──► reviewed result + corrections back to the page ──► you approve
 ```
 
@@ -148,12 +166,15 @@ lightwell/              the app (open lightwell/index.html)
   js/views.js           MapLibre map view and CesiumJS / Google 3D view
   js/ui.js              panels, evidence drawer, floor plate, corrections, brief, checklist, memos, CSV
   js/agent.js           request -> brief; streams the backend agent (incl. questions), or runs the plan in the browser
+  js/shuffle.js         Texas fast-track screen, tenants, tenant-move planner, red team
+  js/intro.js           start screen: the Texas law and Houston's empty offices (sourced)
   config.example.js     copy to config.js for your keys
   consult.js            what the business we consulted asked for (Peri track); feeds the checklist and memo
   data/                 downtown Houston buildings (GeoJSON + .js copy for file://)
 backend/
   agent.py              deepagents planner, sub-agents and tools
   engine.py             Python copy of engine.js
+  shuffle.py            Python copy of shuffle.js
   app.py                FastAPI server streaming agent steps (SSE)
   import_data.py        joins real-data/*.csv to the map
   count_cars.py         Claude vision car counter for aerial images

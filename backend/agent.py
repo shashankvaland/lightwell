@@ -15,11 +15,12 @@ import os
 import queue
 import uuid
 
+from shuffle import FT_LABEL, P as POLICY, challenge_plan as _challenge, fast_track, plan_moves, tenants_of
 from engine import (SAFE_LABEL, Building, LAYER_NAME, WHATIF, analyze, current_value, jround, parse_measurement, review_gaps, summary)
 
 MODEL = os.environ.get("LIGHTWELL_MODEL", "anthropic:claude-opus-5-5")
 ASK_TIMEOUT_S = int(os.environ.get("LIGHTWELL_ASK_TIMEOUT", "300"))
-FIELDS = ("id", "W", "D", "heightM", "floors", "f2f", "year", "rep", "obs", "scanned", "core", "forceLW", "real", "src")
+FIELDS = ("id", "W", "D", "heightM", "floors", "f2f", "year", "rep", "obs", "scanned", "core", "forceLW", "real", "src", "vacantFloors", "center", "tenants")
 BRIEF_KEYS = ("u", "cap", "allowLW", "minHomes", "useParking", "require")
 
 
@@ -34,6 +35,7 @@ class Session:
         self.buildings = {b["id"]: Building(**{k: b.get(k) for k in FIELDS if k in b}) for b in payload.get("buildings", [])}
         for b in self.buildings.values():
             b.obs, b.real, b.src = b.obs or [], b.real or {}, b.src or {}
+            b.vacantFloors = b.vacantFloors or []
         self.events: queue.Queue = queue.Queue()
         self.answers: dict[str, queue.Queue] = {}
         self.corrections: dict[str, dict] = {}
@@ -43,6 +45,8 @@ class Session:
         self.first_rank: list[str] | None = None
         self.scored = False
         self.asked = 0
+        self.moves: dict | None = None
+        self.challenge: dict | None = None
 
     # ---- helpers ----
     def src(self, ids, layer: str) -> str:
@@ -73,8 +77,12 @@ class Session:
     def result(self) -> dict:
         self.analyse_all()
         return {"type": "done", "top": self.top, "memo": self.memo, "key": self.key, "brief": self.S, "review": self.review,
-                "corrections": self.corrections, "reviewed": summary(self.buildings[self.top]) if self.top else None,
+                "corrections": self.corrections, "moves": self.moves, "challenge": self.challenge, "reviewed": summary(self.buildings[self.top]) if self.top else None,
                 "results": {b.id: summary(b) for b in self.buildings.values()}}
+
+
+def big_money(n):
+    return "—" if n is None else (f"${jround(n / 1e5) / 10:g}M" if n >= 1e6 else f"${jround(n / 1000)}k")
 
 
 def money(n):
@@ -249,6 +257,65 @@ def make_tools(s: Session):
         s.emit("Review", f"Re-ranked with your measurement ({shown}). {change}.", ids=[after[0]] if after else [b.id], stage="rescored")
         return json.dumps({"answered": True, "value": raw, "tower": summary(b), "leader_before": before[:3], "leader_after": after[:3]})
 
+
+    def check_texas_fast_track(tower_ids: list[str]) -> str:
+        """Texas SB 840 / SB 2477 screen (in force Sep 2025; Houston qualifies): an office building 5+ years old converts
+        without rezoning, traffic studies or extra parking if at least 65% of it becomes homes. For each tower returns
+        status ('ready' = enough floors already empty, 'shuffle' = `short` more floors must be freed by moving tenants,
+        'too_new', 'unknown' = no floor-by-floor data), floors needed, floors empty now and building age. A screen, not legal advice."""
+        s.analyse_all()
+        out = {t: fast_track(s.get(t)) for t in tower_ids if t in s.buildings}
+        ready = [t for t, v in out.items() if v["status"] == "ready"]
+        sh = [t for t, v in out.items() if v["status"] == "shuffle"]
+        s.emit("Policy", f"Texas fast-track (SB 840/2477, 65% residential): {len(ready)} ready now"
+               f"{' (' + ', '.join(ready[:4]) + ')' if ready else ''}; {len(sh)} need tenant moves"
+               + (f", e.g. {sh[0]} needs {out[sh[0]]['short']} more empty floors" if sh else "") + ".", ids=(ready or sh)[:1])
+        return json.dumps(out)
+
+    def list_tenants(tower_id: str) -> str:
+        """Tenants in one tower from CoStar tenant / lease records (or SIMULATED stand-ins): name, floors, sq ft, lease end year."""
+        b = s.get(tower_id)
+        ts = tenants_of(b)
+        if ts is None:
+            return json.dumps({"error": f"No floor-by-floor data for {b.id}."})
+        src = "CoStar records" if ts and all(x.get("src") == "COSTAR" for x in ts) else "<i>simulated</i>"
+        s.emit("CoStar", f"{b.id}: {len(ts)} tenants ({src}); {sum(1 for x in ts if x['lease_end'] <= POLICY['year'] + 1)} leases end by {POLICY['year'] + 1}.", ids=[b.id])
+        return json.dumps(ts)
+
+    def plan_tenant_moves(tower_id: str, goal: str = "fast") -> str:
+        """Plan tenant moves that free floors in one tower. goal='fast' frees just enough floors to reach the 65% Texas
+        fast-track; goal='empty' empties the tower. Picks tenants whose leases end soonest, moves each to the nearest tower
+        with room (preferring towers that are poor conversion candidates, so they stay offices and fill up). Returns moves,
+        incentive cost (moving allowance + early-exit concessions, estimates), homes unlocked and cost per home unlocked."""
+        s.analyse_all()
+        b = s.get(tower_id)
+        plan = plan_moves(b, list(s.buildings.values()), goal if goal in ("fast", "empty") else "fast", s.A)
+        if plan is None:
+            return json.dumps({"error": f"No floor-by-floor data for {b.id}; can't plan moves."})
+        s.moves, s.challenge = plan, None
+        s.events.put({"type": "moves", "plan": plan})
+        s.emit("Deals", f"{b.id}: move {len(plan['moves'])} tenants ({plan['freed_floors']} floors) into "
+               f"{', '.join(plan['receivers']) or 'no tower'} → {plan['homes_after']} homes can start now (+{plan['homes_gained']}); "
+               f"incentives about {big_money(plan['cost'])}"
+               + (f", {money(plan['cost_per_home_gained'])} per home unlocked" if plan["cost_per_home_gained"] else "")
+               + (". Reaches the fast-track." if plan["fast_track_after"] else ". Still short of the fast-track."), ids=[b.id])
+        return json.dumps(plan)
+
+    def challenge_plan(tower_id: str) -> str:
+        """Red team: attack the latest tenant-move plan for this tower (long leases, far moves, receivers that are
+        themselves conversion candidates, unplaced tenants, unverified age, simulated data). Returns risks and a verdict."""
+        s.analyse_all()
+        b = s.get(tower_id)
+        plan = s.moves if s.moves and s.moves["tower"] == b.id else plan_moves(b, list(s.buildings.values()), "fast", s.A)
+        c = _challenge(b, plan, list(s.buildings.values()))
+        s.challenge = {**c, "tower": b.id}
+        s.events.put({"type": "challenge", "tower": b.id, **c})
+        top = [r for r in c["risks"] if r["level"] != "low"]
+        s.emit("Red team", f"{b.id}: {dict(holds='plan holds', holds_with_caveats='holds, with caveats', weak='plan is weak', no_plan='no plan possible')[c['verdict']]}."
+               + (f" Biggest risk: {top[0]['text']}" if top else " No serious objection.")
+               + (f" (+{len(top) - 1} more)" if len(top) > 1 else ""), ids=[b.id])
+        return json.dumps(c)
+
     def draft_owner_memo(tower_id: str, rationale: str = "") -> str:
         """Draft the owner memo for the chosen tower (it must pass the brief) and mark it as the top pick for the user to approve.
         rationale: two sentences on why this tower, naming any estimate that still matters."""
@@ -258,7 +325,9 @@ def make_tools(s: Session):
         s.top = b.id
         sm = summary(b)
         s.memo = rationale or (f"{b.id}: {sm['homes']} homes at about {money(sm['cost_per_home'])} each; "
-                               f"preliminary fire screen: {SAFE_LABEL[sm['fire_screen']].lower()}; ~{sm['carbon_t']} t CO2e avoided.")
+                               f"preliminary fire screen: {SAFE_LABEL[sm['fire_screen']].lower()}; ~{sm['carbon_t']} t CO2e avoided."
+                               + (f" Tenant moves: {len(s.moves['moves'])} tenants into {', '.join(s.moves['receivers'])} for about "
+                                  f"{big_money(s.moves['cost'])} reach the Texas 65% fast-track." if s.moves and s.moves["tower"] == b.id and s.moves["moves"] else ""))
         s.emit("Planner", f"Drafted the owner memo for {b.id}; waiting for your approval.", ids=[b.id])
         return json.dumps({"ok": True, "summary": sm})
 
@@ -266,23 +335,34 @@ def make_tools(s: Session):
                 count_parking=count_parking, read_floor_plates=read_floor_plates, rank_towers=rank_towers,
                 test_conversion=test_conversion, check_fire_safety=check_fire_safety,
                 find_occupancy_mismatches=find_occupancy_mismatches, review_evidence=review_evidence,
-                request_measurement=request_measurement, draft_owner_memo=draft_owner_memo)
+                request_measurement=request_measurement, draft_owner_memo=draft_owner_memo,
+                check_texas_fast_track=check_texas_fast_track, list_tenants=list_tenants,
+                plan_tenant_moves=plan_tenant_moves, challenge_plan=challenge_plan)
 
 
-SYSTEM_PROMPT = """You are Lightwell's planner. You find downtown Houston office towers that can become homes.
+SYSTEM_PROMPT = """You are Lightwell's planner. You lead a team that turns empty downtown Houston offices into homes.
+Context: since 1 Sep 2025 Texas SB 840 / SB 2477 let an office building 5+ years old convert to homes without rezoning,
+traffic studies or extra parking, if at least 65% of it becomes residential. Houston has empty offices but the empty
+space is scattered across towers and held up by tenants on long leases. Your job is to find the towers that can convert
+and, where tenants are in the way, plan the tenant moves that unlock them.
 The user's request has already been parsed into a brief (get_brief). If the request asks for something the brief doesn't
 reflect (a home count, ignoring parking, requiring real data, a cost cap, no lightwells), call update_brief first.
 Then, keeping every step short:
 1. list_towers.
-2. Ask the market-analyst sub-agent for market records and parking counts for all towers and any occupancy discrepancies.
-3. Ask the feasibility-engineer sub-agent to rank the towers, then test conversion and the fire screen for the top 3.
-4. Review: call review_evidence on the top 3 passing towers. If a gap is decision-relevant for the leader, call
+2. market-analyst: market records and parking counts for all towers, and any occupancy discrepancies.
+3. feasibility-engineer: rank the towers, then test conversion and the fire screen for the top 3.
+4. policy-analyst: Texas fast-track status for the top 5 passing towers.
+5. Review: call review_evidence on the top 3 passing towers. If a gap is decision-relevant for the leader, call
    request_measurement for it (one sentence why). After the answer, call rank_towers again and explain how the ranking
    changed. Never recommend a tower that fails the brief.
-5. Call draft_owner_memo for your single best passing tower with a two-sentence rationale.
+6. deal-maker: for your leading tower, if it needs tenant moves, plan them (goal 'fast'); compare with the next tower if
+   the cost per home unlocked is high.
+7. red-team: challenge the move plan. If the verdict is 'weak', either pick another tower (repeat 6-7 once) or say
+   clearly what must be true for the plan to work.
+8. draft_owner_memo for your single best passing tower, with a two-sentence rationale that names the move plan.
 Finish with two sentences: the pick and why. Values tagged SIMULATED, ESTIMATE, ASSUMED or MISSING are not measured:
 say so when you rely on them. Occupancy discrepancies are observations to investigate, never accusations.
-The fire screen is preliminary; never call a tower fire-safe."""
+The fire screen is preliminary; never call a tower fire-safe. The fast-track screen is not legal advice."""
 
 
 def run_llm(s: Session):
@@ -295,9 +375,21 @@ def run_llm(s: Session):
     feas = {"name": "feasibility-engineer", "description": "Reads floor plates, ranks towers, tests conversion and the preliminary fire screen.",
             "system_prompt": "Use rank_towers first, then test_conversion and check_fire_safety on the towers you are asked about. Be brief.",
             "tools": [t["read_floor_plates"], t["rank_towers"], t["test_conversion"], t["check_fire_safety"]]}
+    policy = {"name": "policy-analyst", "description": "Screens towers against the Texas SB 840 / SB 2477 conversion fast-track (age, 65% residential).",
+              "system_prompt": "Call check_texas_fast_track on the towers you are given. Report which are ready, which need how many "
+                               "floors freed, and any missing year built. Say it is a screen, not legal advice.",
+              "tools": [t["check_texas_fast_track"]]}
+    deals = {"name": "deal-maker", "description": "Reads CoStar tenants and leases and plans the tenant moves that unlock a tower for homes.",
+             "system_prompt": "Call list_tenants, then plan_tenant_moves (goal 'fast' unless told otherwise). Report moves, cost, homes "
+                              "unlocked and cost per home unlocked. Say when tenant data is simulated.",
+             "tools": [t["list_tenants"], t["plan_tenant_moves"], t["check_texas_fast_track"]]}
+    red = {"name": "red-team", "description": "Attacks a tenant-move plan and the evidence behind the pick; returns the strongest objections.",
+           "system_prompt": "You are a skeptical broker and lender. Call challenge_plan on the tower, and review_evidence if useful. "
+                            "Return the verdict and the two strongest objections, each with what would resolve it. Be blunt and brief.",
+           "tools": [t["challenge_plan"], t["review_evidence"], t["list_tenants"]]}
     agent = create_deep_agent(model=MODEL, tools=[t["list_towers"], t["get_brief"], t["update_brief"], t["rank_towers"],
                                                   t["review_evidence"], t["request_measurement"], t["draft_owner_memo"]],
-                              system_prompt=SYSTEM_PROMPT, subagents=[market, feas])
+                              system_prompt=SYSTEM_PROMPT, subagents=[market, feas, policy, deals, red])
     s.emit("Planner", f"Planning with {MODEL.split(':')[-1]} (deepagents). Brief: {brief_text(s.S)}.")
     result = agent.invoke({"messages": [{"role": "user", "content": f"{s.prompt}\n\nParsed brief: {json.dumps(s.S)}"}]})
     msgs = result.get("messages", []) if isinstance(result, dict) else []
@@ -319,8 +411,10 @@ def brief_text(S):
 def run_pick(s: Session, t, rationale=""):
     s.analyse_all()
     best = [b for b in s.ranked() if b.passes]
-    if best:
-        t["draft_owner_memo"](best[0].id, rationale)
+    lead = getattr(s, "lead", None)
+    pick = next((b for b in best if b.id == lead), best[0] if best else None)
+    if pick:
+        t["draft_owner_memo"](pick.id, rationale)
 
 
 def run_scripted(s: Session):
@@ -343,4 +437,29 @@ def run_scripted(s: Session):
         if rel:
             g = rel[0]
             t["request_measurement"](g["id"], g["field"], f"At {g['what_if']}, {g['id']} {g['decision']}.")
+    run_deal(s, t)
     run_pick(s, t)
+
+
+def run_deal(s: Session, t):
+    """Policy screen, tenant moves and red team for the leader; try the next passing tower once if the plan is weak."""
+    s.analyse_all()
+    passing = [b.id for b in s.ranked() if b.passes]
+    if not passing:
+        return
+    t["check_texas_fast_track"](passing[:5])
+    for tid in passing[:4]:
+        ft = fast_track(s.get(tid))
+        if ft["status"] == "unknown":
+            continue
+        if ft["status"] == "shuffle":
+            t["list_tenants"](tid)
+            t["plan_tenant_moves"](tid, "fast")
+        else:
+            s.moves = None
+        c = json.loads(t["challenge_plan"](tid)) if s.moves else {"verdict": "holds"}
+        if c["verdict"] != "weak":
+            s.lead = tid
+            return
+        s.emit("Planner", f"Red team found the plan for {tid} weak; trying the next tower.")
+    s.lead = passing[0]

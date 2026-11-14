@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 DEFAULT_ASSUMPTIONS = {
     "costPerSqft": 255, "abatement": 20, "lightwellPerSqft": 420, "sprinklerPerSqft": 9,
     "newBuildPerHome": 400000, "carbonKgPerM2": 500, "reuseSaving": 0.6, "f2fMin": 12.5, "f2fHard": 10.5, "maxTravelFt": 250,
-    "unknownVacancy": 0.25, "unknownYear": 1970,
+    "unknownVacancy": 0.25, "unknownYear": 1970, "moveCostSqft": 15, "buyoutSqftYr": 30,
 }
 DEFAULT_CONSTRAINTS = {"u": 30, "cap": 300000, "allowLW": True, "minHomes": 20, "useParking": True, "require": []}
 LAYER_NAME = {"market": "CoStar", "aerial": "Vexcel", "interior": "Matterport"}
@@ -77,6 +77,9 @@ class Building:
     forceLW: bool | None = None
     real: dict = field(default_factory=dict)
     src: dict = field(default_factory=dict)   # per-field source tags sent by the browser
+    vacantFloors: list = field(default_factory=list)   # empty floor numbers (CoStar available space, or simulated)
+    center: list | None = None        # [lon, lat] of the footprint centre
+    tenants: list | None = None       # CoStar tenant / lease records when imported; else derived in shuffle.py
     plan: dict | None = field(default=None, repr=False)
     alt: dict | None = field(default=None, repr=False)
     score: int | None = None

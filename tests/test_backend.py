@@ -38,7 +38,7 @@ def payload(S=None):
     bs = []
     for r in rows:
         b = dict(r["input"])
-        b["src"] = {"f2f": "ESTIMATE", "core": "ASSUMED", "rep": "SIMULATED", "year": "SIMULATED", "obs": "SIMULATED", "plate": "OSM"}
+        b["src"] = {"f2f": "ESTIMATE", "core": "ASSUMED", "rep": "SIMULATED", "year": "SIMULATED", "obs": "SIMULATED", "plate": "OSM", "vacant": "SIMULATED"}
         bs.append(b)
     return {"prompt": "test", "constraints": S or {}, "assumptions": {}, "buildings": bs, "key": "k1", "scripted": True}
 

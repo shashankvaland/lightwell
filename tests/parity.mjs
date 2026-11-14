@@ -5,7 +5,7 @@ import fs from 'node:fs'; import vm from 'node:vm'; import path from 'node:path'
 const root = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
 const ctx = { window: {}, console, Math, JSON, Set, Map, Array, Object, String, Number, Infinity, isFinite };
 ctx.window.window = ctx.window; vm.createContext(ctx);
-for (const f of ['lightwell/js/engine.js', 'lightwell/js/data.js']) vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f });
+for (const f of ['lightwell/js/engine.js', 'lightwell/js/data.js', 'lightwell/js/shuffle.js']) vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f });
 const LW = ctx.window.LW;
 const gj = JSON.parse(fs.readFileSync(path.join(root, 'lightwell/data/houston_downtown.geojson'), 'utf8'));
 const B = LW.buildCandidates(gj, 'demo');
@@ -18,7 +18,7 @@ const scenarios = [
 const out = [];
 for (const sc of scenarios) {
   LW.S = { ...sc.S };
-  const rows = [];
+  const rows = [], copies = [];
   for (const b0 of B) {
     const b = { ...b0, overrides: {}, forceLW: sc.forceLW && b0.idx % 3 === 0 ? true : null };
     if (sc.core && b.idx % 4 === 1) b.core = [b.W * 0.3, b.D * 0.35, b.W * 0.7, b.D * 0.65];
@@ -27,9 +27,15 @@ for (const sc of scenarios) {
     LW.analyze(b);
     const L = b.plan.L, issues = LW.checkLayout(L, b.W, b.D);
     rows.push({ input: { id: b.id, W: b.W, D: b.D, heightM: b.heightM, floors: b.floors, f2f: b.f2f, year: b.year, rep: b.rep,
-      obs: b.obs, scanned: b.scanned, core: b.core, forceLW: b.forceLW, real: b.real }, summary: LW.summary(b), issues,
+      obs: b.obs, scanned: b.scanned, core: b.core, forceLW: b.forceLW, real: b.real, vacantFloors: b.vacantFloors, center: b.center,
+      src: { vacant: LW.srcOf(b, 'vacant') } }, summary: LW.summary(b), issues,
       courtOK: b.courtOK, altIssues: b.alt ? LW.checkLayout(b.alt.L, b.W, b.D) : [] });
+    copies.push(b);
   }
+  // Texas fast-track + tenant moves + red team on every tower (both goals)
+  copies.forEach((b, i) => { const r = rows[i]; r.fastTrack = LW.fastTrack(b);
+    r.moves = { fast: LW.planMoves(b, copies, 'fast'), empty: LW.planMoves(b, copies, 'empty') };
+    r.challenge = LW.challengePlan(b, r.moves.fast, copies); });
   out.push({ S: sc.S, A: LW.A, rows });
 }
 fs.writeFileSync(path.join(root, 'tests/js_results.json'), JSON.stringify(out));

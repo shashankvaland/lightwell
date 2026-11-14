@@ -7,6 +7,17 @@
   const LW = window.LW, views = LW.views = {};
   const CENTER = [-95.3665, 29.7575];
 
+  // Tenant-move arcs: points along a raised arc from the tower being emptied to the receiving tower.
+  // Heights in metres above ground; t in [0,1].
+  LW.arcPoints = function (m, n) {
+    const A = LW.B.find(b => b.id === m.from), C = LW.B.find(b => b.id === m.to); if (!A || !C) return [];
+    const h0 = A.heightM * 0.7, h1 = C.heightM * 0.6, peak = Math.max(90, m.dist_m * 0.35), out = [];
+    for (let i = 0; i <= n; i++) { const t = i / n;
+      out.push({ t, lon: A.center[0] + (C.center[0] - A.center[0]) * t, lat: A.center[1] + (C.center[1] - A.center[1]) * t,
+        h: h0 + (h1 - h0) * t + peak * 4 * t * (1 - t) }); }
+    return out;
+  };
+
   // ---------------- MapLibre ----------------
   views.map = {
     ready: false,
@@ -47,6 +58,31 @@
     setFlags(list) { if (this.ready) this.map.getSource('flags').setData({ type: 'FeatureCollection',
       features: list.map(b => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: b.center } })) }); },
     show(on) { document.getElementById('map').style.visibility = on ? 'visible' : 'hidden'; if (on && this.ready) this.map.resize(); },
+    // tenant moves: floating gold arcs (small extruded boxes) with a white pulse running along them
+    setMoves(plan) {
+      if (!this.ready) return; const map = this.map;
+      if (!map.getSource('moves')) {
+        map.addSource('moves', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+        map.addSource('movesGround', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+        map.addLayer({ id: 'movesGround', type: 'line', source: 'movesGround', paint: { 'line-color': '#f5b942', 'line-width': 2, 'line-opacity': 0.55, 'line-dasharray': [2, 2] } });
+        map.addLayer({ id: 'moves', type: 'fill-extrusion', source: 'moves', paint: { 'fill-extrusion-color': '#f5b942',
+          'fill-extrusion-base': ['get', 'lo'], 'fill-extrusion-height': ['get', 'hi'], 'fill-extrusion-opacity': 0.95 } });
+      }
+      clearInterval(this._movesTimer);
+      const feats = [], ground = [], moves = plan ? plan.moves : [];
+      for (const m of moves) {
+        const pts = LW.arcPoints(m, 48), r = 2.6 / 111320, rl = r / Math.cos(29.76 * Math.PI / 180);
+        for (const q of pts.slice(1, -1)) feats.push({ type: 'Feature', properties: { p: q.t, lo: q.h, hi: q.h + 4 },
+          geometry: { type: 'Polygon', coordinates: [[[q.lon - rl, q.lat - r], [q.lon + rl, q.lat - r], [q.lon + rl, q.lat + r], [q.lon - rl, q.lat + r], [q.lon - rl, q.lat - r]]] } });
+        ground.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [pts[0], pts[pts.length - 1]].map(q => [q.lon, q.lat]) } });
+      }
+      map.getSource('moves').setData({ type: 'FeatureCollection', features: feats });
+      map.getSource('movesGround').setData({ type: 'FeatureCollection', features: ground });
+      if (!moves.length) return;
+      let ph = 0;
+      this._movesTimer = setInterval(() => { ph = (ph + 0.025) % 1.15;
+        map.setPaintProperty('moves', 'fill-extrusion-color', ['case', ['<', ['abs', ['-', ['get', 'p'], ph]], 0.07], '#ffffff', '#f5b942']); }, 50);
+    },
     // drone orbit: tilt in and keep turning the bearing around the tower until the user touches the map
     orbit(b) {
       if (!this.ready) return; this.stopOrbit();
@@ -209,6 +245,17 @@
           disableDepthTestDistance: Number.POSITIVE_INFINITY } });
     },
     show(on) { document.getElementById('g3d').style.visibility = on ? 'visible' : 'hidden'; if (!on) this.stopOrbit(); },
+
+    setMoves(plan) {
+      if (!this.ready) return;
+      (this._moveEnts || []).forEach(e => this.viewer.entities.remove(e)); this._moveEnts = [];
+      for (const m of (plan ? plan.moves : [])) {
+        const pts = LW.arcPoints(m, 64).map(q => Cesium.Cartesian3.fromDegrees(q.lon, q.lat, this.h0 + q.h));
+        this._moveEnts.push(this.viewer.entities.add({ polyline: { positions: pts, width: 12,
+          material: new Cesium.PolylineGlowMaterialProperty({ glowPower: 0.25, color: Cesium.Color.fromCssColorString('#f5b942') }) } }));
+      }
+      this.viewer.scene.requestRender();
+    },
 
     // ---- empty floors ----
     // Google mode: paint only the empty floors onto the real photoreal towers (a classification slice per floor).

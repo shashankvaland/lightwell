@@ -96,6 +96,44 @@
       ${k} of ${n - 1} office floors empty${big ? `; biggest block is floors ${big.from}–${big.to}.<br>
       <b>Phase one:</b> ${fmt(big.len * p.perFloor)} homes on those ${big.len} floors now, the rest as leases end.` : '. No phase one yet.'}</div></div>`;
   }
+  // Texas fast-track (SB 840 / SB 2477) + tenant moves + red team, for one tower
+  const range = f => f.length > 1 ? `${f[0]}–${f[f.length - 1]}` : `${f[0]}`;
+  function moveSection(b) {
+    if (!LW.fastTrack) return '';
+    const ft = LW.fastTrack(b), mp = LW.movePlan && LW.movePlan.tower === b.id ? LW.movePlan : null, ch = mp && LW.moveChallenge;
+    const head = `<div class="find"><button class="tag t-tx ${ft.status}" data-ev="texas">TX FAST-TRACK</button><span><b>${LW.FT_LABEL[ft.status]}.</b> `
+      + (ft.status === 'unknown' ? 'Needs CoStar floor-by-floor availability to check the 65% residential rule.'
+        : `${ft.free} of ${ft.floors} floors empty; 65% homes needs ${ft.need}${ft.short ? `, so <b>${ft.short} more floors</b> must be freed` : ''}.`
+          + (ft.ageKnown ? ` Built ${ft.age} years ago${ft.age >= LW.POLICY.minAge ? ' (5+ ✓)' : ''}.` : ' Year built unknown (must be 5+ years).'))
+      + `</span></div>`;
+    if (ft.status === 'unknown' || ft.status === 'too_new') return head;
+    let body = `<div class="btns"><button id="mvFast" class="${mp && mp.goal === 'fast' ? 'on' : ''}">Plan tenant moves</button><button id="mvEmpty" class="${mp && mp.goal === 'empty' ? 'on' : ''}">Empty the tower</button>${mp ? '<button id="mvClear">Hide</button>' : ''}</div>`;
+    if (mp) {
+      body += `<div class="moves"><div class="mvSum"><b>${mp.moves.length}</b> tenants · <b>${mp.freed_floors}</b> floors freed → <b>${fmt(mp.homes_after)}</b> homes can start now (+${fmt(mp.homes_gained)})<br>
+        Incentives ≈ <b>${LW.bigMoney(mp.cost)}</b>${mp.cost_per_home_gained ? ` · <b>${money(mp.cost_per_home_gained)}</b> per home unlocked` : ''} ${tagFor(b, null, 'ESTIMATE')}<br>
+        ${mp.fast_track_after ? '<span class="ok">✓ reaches the 65% fast-track</span>' : '<span class="bad">✗ still short of 65%</span>'}</div>
+        ${mp.moves.map(m => `<div class="mv"><span class="tag ${m.src === 'COSTAR' ? 't-cs' : 't-sim'}">${m.src === 'COSTAR' ? 'COSTAR' : 'SIMULATED'}</span>
+          <span><b>${esc(m.tenant)}</b> · fl ${range(m.floors)} · ${fmt(m.sqft / 1000)}k sq ft · lease to ${m.lease_end}<br>→ <a href="#" data-go="${m.to}">${esc((LW.B.find(x => x.id === m.to) || {}).label || m.to)}</a> · ${m.dist_m} m · ${LW.bigMoney(m.cost)}</span></div>`).join('')}
+        ${mp.unplaced.length ? `<div class="mv bad">${mp.unplaced.length} tenant(s) found no nearby tower with room.</div>` : ''}
+        ${ch ? `<div class="redteam ${ch.verdict}"><b>RED TEAM · ${LW.VERDICT[ch.verdict]}</b>${ch.risks.length ? '<ul>' + ch.risks.map(r => `<li class="${r.level}">${esc(r.text)}</li>`).join('') + '</ul>' : ''}</div>` : ''}</div>`;
+    }
+    return head + body;
+  }
+  LW.showMoves = function (plan, challenge, quiet) {
+    LW.movePlan = plan || null; LW.moveChallenge = challenge || null;
+    LW.view.setMoves && LW.view.setMoves(LW.movePlan);
+    if (plan && !quiet) { const t = LW.B.find(x => x.id === plan.tower); if (t) LW.onSelect(t, false); if (LW.view.overview) LW.view.overview(); }
+    if (LW.selected) renderCard(LW.selected);
+  };
+  function planFor(b, goal) {
+    const plan = LW.planMoves(b, LW.B, goal), ch = LW.challengePlan(b, plan, LW.B);
+    LW.showMoves(plan, ch);
+    if (plan) {
+      LW.log('Deals', `${b.id}: move ${plan.moves.length} tenants (${plan.freed_floors} floors) into ${plan.receivers.join(', ') || 'no tower'} → ${fmt(plan.homes_after)} homes can start now; incentives about ${LW.bigMoney(plan.cost)}.`);
+      LW.log('Red team', `${b.id}: ${LW.VERDICT[ch.verdict].toLowerCase()}.${ch.risks.find(r => r.level !== 'low') ? ' ' + ch.risks.find(r => r.level !== 'low').text : ''}`);
+    }
+  }
+
   LW.phaseOne = b => { const big = LW.emptyBlocks(b)[0]; return big ? { ...big, homes: big.len * b.plan.perFloor } : null; };
 
   function renderCard(b) {
@@ -125,6 +163,7 @@
       ${row(b, null, `Vacancy signal ${pct(b.vac)} (from ${b.vacBasis})`, b.vacBasis === 'assumed' ? 'ASSUMED' : 'FEASIBILITY')}
       ${row(b, null, p.lw ? `Lightwell cut: ${p.perFloor} homes per floor` : `${p.perFloor} homes per floor along the window walls`, 'FEASIBILITY')}
       ${floorsRow(b)}
+      ${moveSection(b)}
       <div class="find"><button class="tag t-safe ${s.status}" data-ev="fire">FIRE · PRELIM</button><span><b>${LW.SAFE_LABEL[s.status]}.</b> Farthest home about ${Math.round(s.travel)} ft from a stair (estimate).${s.notes.length ? '<br>' + s.notes.map(esc).join('<br>') : ''}</span></div>
       ${b.phantom ? `<div class="find"><button class="tag t-fx" data-ev="obs">INVESTIGATE</button><span>${(b.real.market && b.real.aerial)
         ? `Observation to investigate, not a finding: reported ${pct(rep)} leased, but parking never above ${pct(Math.max(...obs))} across ${obs.length} captures. Garages, transit or remote work can explain this.`
@@ -147,6 +186,9 @@
     $('showPlate').onclick = () => openPlate(b); $('approve').onclick = () => openMemo(b);
     $('orbit').onclick = () => { $('plateBox').style.display = 'none'; LW.view.orbit(b); };
     $('sview').onclick = () => LW.streetView.open(b);
+    if ($('mvFast')) { $('mvFast').onclick = () => planFor(b, 'fast'); $('mvEmpty').onclick = () => planFor(b, 'empty'); }
+    if ($('mvClear')) $('mvClear').onclick = () => LW.showMoves(null);
+    $('card').querySelectorAll('[data-go]').forEach(a => a.onclick = e => { e.preventDefault(); const t = LW.B.find(x => x.id === a.dataset.go); if (t) LW.onSelect(t, true); });
     // street level needs a true 3D scene, so it switches to the Photoreal 3D view first
     $('street').onclick = async () => { $('plateBox').style.display = 'none'; if (!LW.view.canStreet) await LW.switchView('g3d'); if (LW.view.canStreet) LW.view.street(b); };
     $('fix').onclick = () => { const f = $('fixForm'); f.style.display = f.style.display === 'none' ? 'block' : 'none'; };
@@ -169,7 +211,7 @@
 
   // ---------- evidence drawer ----------
   const kv = rows => `<table class="kv">${rows.filter(r => r[1] != null && r[1] !== '').map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`;
-  const FIELD = { vacant: 'Empty floors', floors: 'Floors and height', plate: 'Floor plate', core: 'Core', f2f: 'Floor-to-floor height', rep: 'Percent leased', year: 'Year built', obs: 'Parking occupancy', fire: 'Preliminary fire screen', '': 'Calculated value' };
+  const FIELD = { vacant: 'Empty floors', floors: 'Floors and height', plate: 'Floor plate', core: 'Core', f2f: 'Floor-to-floor height', rep: 'Percent leased', year: 'Year built', obs: 'Parking occupancy', fire: 'Preliminary fire screen', texas: 'Texas conversion fast-track', '': 'Calculated value' };
   const SRC_TXT = {
     OSM: 'From the OpenStreetMap building record (footprint, height or levels tags).',
     ESTIMATE: 'Estimated by Lightwell from other values; not measured.',
@@ -180,7 +222,7 @@
     MISSING: 'No value in any loaded data layer.', YOU: 'Corrected by you in this session.',
   };
   LW.evidence = function (b, k) {
-    const s = k && k !== 'fire' ? LW.srcOf(b, k) : null, p = b.plan, sf = p.safety, parts = [];
+    const s = k && k !== 'fire' && k !== 'texas' ? LW.srcOf(b, k) : null, p = b.plan, sf = p.safety, parts = [];
     if (s) parts.push(`<p><span class="tag ${LW.SRC_CLASS[s]}">${s}</span> ${SRC_TXT[s] || ''}</p>`);
     if (s === 'YOU') parts.push(kv([['Your value', JSON.stringify(b.overrides[k])], ['Original', JSON.stringify(b[k])], ['Original source', (b.src || {})[k]]]));
     if (k === 'rep' || k === 'year') {
@@ -189,6 +231,16 @@
         ['RBA (sq ft)', b.ev.costar.rba_sqft ? fmt(b.ev.costar.rba_sqft) : null], ['Matched to footprint', b.ev.costar.match]]));
       if (k === 'year' && LW.eff(b, 'year') == null) parts.push(`<p>Engine assumption: costs use ${LW.A.unknownYear} (abatement and sprinkler retrofit included), age fit neutral.</p>`);
       if (k === 'rep' && LW.eff(b, 'rep') == null) parts.push(`<p>Engine assumption: vacancy from ${b.vacBasis}${b.vacBasis === 'assumed' ? ` (${pct(LW.A.unknownVacancy)}, Houston average)` : ''}.</p>`);
+    }
+    if (k === 'texas') {
+      const ft = LW.fastTrack(b);
+      parts.push(`<p><b>Texas SB 840 and SB 2477</b> (in force 1 September 2025) apply to cities over 150,000 people in counties over 300,000, which includes Houston.
+        An office building at least 5 years old can be converted to homes without rezoning, a traffic study or extra parking, if at least 65% of the building and of each occupied floor becomes residential.</p>
+        <p>Lightwell's screen: the ground floor stays lobby or retail; every other floor counts as residential only when it is fully empty (whole-floor conversion). Floors still leased stay offices until a tenant moves or a lease ends.
+        This is a screening rule, not legal advice: confirm with a land-use lawyer and the City of Houston.</p>`
+        + kv([['Floors', ft.floors], ['Residential floors needed (65%)', ft.need], ['Floors empty now', ft.free ?? 'unknown'], ['Floors to free', ft.short ?? 'unknown'],
+          ['Building age', ft.ageKnown ? ft.age + ' years' : 'unknown'], ['Status', LW.FT_LABEL[ft.status]]])
+        + `<p class="note">Sources: <a href="https://www.foley.com/insights/publications/2025/11/client-briefing-texas-senate-bill-840-and-texas-senate-bill-2477-89th-legislatu/" target="_blank" rel="noopener">Foley briefing on SB 840 / SB 2477</a> · <a href="https://capitol.texas.gov/BillLookup/History.aspx?LegSess=89R&Bill=SB840" target="_blank" rel="noopener">Texas Legislature: SB 840</a></p>`);
     }
     if (k === 'vacant') {
       if (b.ev.costar && b.ev.costar.vacant_floors) parts.push('<h4>CoStar available space</h4>' + kv([['CoStar id', b.ev.costar.costar_id], ['Floors with available space', b.ev.costar.vacant_floors.join(', ')]]));
@@ -323,7 +375,7 @@ ${LW.briefText(LW.S)}
 ${sm.hidden_vacancy_flag ? '- **Observation to investigate:** reported occupancy and observed parking disagree on every capture. This is not a finding; check the rent roll.\n' : ''}${sm.assumed && sm.assumed.length ? sm.assumed.map(a => `- **Assumption:** ${a}.`).join('\n') + '\n' : ''}${fresh && R.review && R.review.length ? '\n## Agent review\n' + R.review.map(x => '- ' + x.replace(/<[^>]+>/g, '')).join('\n') + '\n' : ''}
 ## Proposal
 - ${fmt(sm.homes)} homes: ${sm.mix.studio} studios, ${sm.mix.one_bed} one-beds, ${sm.mix.two_bed} two-beds (${sm.homes_per_floor} per floor; ground floor kept as lobby and retail).
-${LW.phaseOne(b) ? `- **Phase one:** floors ${LW.phaseOne(b).from}-${LW.phaseOne(b).to} are already empty [${tagOf('vacant')}]: ${fmt(LW.phaseOne(b).homes)} homes can start now; convert the rest as leases end.\n` : ''}- Estimated ${money(sm.cost_per_home)} per home, against roughly ${money(LW.A.newBuildPerHome)} for new construction.
+${LW.phaseOne(b) ? `- **Phase one:** floors ${LW.phaseOne(b).from}-${LW.phaseOne(b).to} are already empty [${tagOf('vacant')}]: ${fmt(LW.phaseOne(b).homes)} homes can start now; convert the rest as leases end.\n` : ''}${LW.fastTrack ? `- **Texas fast-track (SB 840 / 2477):** ${LW.FT_LABEL[LW.fastTrack(b).status].toLowerCase()}${LW.movePlan && LW.movePlan.tower === b.id && LW.movePlan.moves.length ? `; plan: move ${LW.movePlan.moves.length} tenants into ${LW.movePlan.receivers.join(', ')} for about ${LW.bigMoney(LW.movePlan.cost)} (estimate${LW.movePlan.moves.some(m => m.src !== 'COSTAR') ? ', simulated tenants' : ''})${LW.moveChallenge ? `; red team: ${LW.VERDICT[LW.moveChallenge.verdict].toLowerCase()}` : ''}` : ''}. Screening, not legal advice.\n` : ''}- Estimated ${money(sm.cost_per_home)} per home, against roughly ${money(LW.A.newBuildPerHome)} for new construction.
 - About ${fmt(sm.carbon_t)} t CO2e of embodied carbon avoided.
 
 ## Before a site visit
@@ -391,7 +443,8 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
 
   const AS = [['costPerSqft', 'Conversion cost ($/sq ft)', 1], ['lightwellPerSqft', 'Lightwell cut ($/sq ft removed)', 1], ['sprinklerPerSqft', 'Sprinkler retrofit ($/sq ft)', 1],
     ['newBuildPerHome', 'New-build cost per home ($)', 1], ['carbonKgPerM2', 'New-build carbon (kg CO₂e/m²)', 1], ['reuseSaving', 'Carbon avoided by reuse (%)', 100],
-    ['maxTravelFt', 'Max travel to a stair (ft)', 1], ['f2fHard', 'Lowest usable floor-to-floor (ft)', 1]];
+    ['maxTravelFt', 'Max travel to a stair (ft)', 1], ['f2fHard', 'Lowest usable floor-to-floor (ft)', 1],
+    ['moveCostSqft', 'Tenant move allowance ($/sq ft)', 1], ['buyoutSqftYr', 'Early lease exit ($/sq ft/yr left)', 1]];
   function buildAssumptions() {
     $('assume').innerHTML = AS.map(([k, label, m]) => `<label class="row">${label}<input data-k="${k}" data-m="${m}" type="number" step="${k === 'f2fHard' ? 0.5 : 1}" value="${+(LW.A[k] * m).toFixed(1)}"></label>`).join('');
     $('assume').querySelectorAll('input').forEach(inp => inp.oninput = () => { const v = +inp.value; if (!isFinite(v) || v <= 0) return;
@@ -413,7 +466,7 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
     }
     prev.show(false); next.show(true); LW.view = next;
     prev.stopOrbit(); prev.select(null, LW.selected); LW.refresh(); next.select(LW.selected, null);
-    next.setFloors(LW.floorsOn);
+    next.setFloors(LW.floorsOn); if (next.setMoves) next.setMoves(LW.movePlan);
     if (LW.selected) next.fly(LW.selected);
   }
   document.querySelectorAll('#views button[data-v]').forEach(x => x.onclick = () => switchView(x.dataset.v));

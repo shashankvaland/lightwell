@@ -5,11 +5,20 @@
 (function () {
   const LW = window.LW, $ = id => document.getElementById(id);
   const WHO = { Planner: '#f5b942', Map: '#57c3bd', CoStar: '#b48ae0', Vexcel: '#57c3bd', Matterport: '#8fb0ff',
-    Feasibility: '#e0b35a', Safety: '#ff9f6b', Forensics: '#ef8796', Review: '#c7cdda', Agent: '#f5b942', Tool: '#8f9ab0', You: '#5fd38a' };
+    Feasibility: '#e0b35a', Safety: '#ff9f6b', Forensics: '#ef8796', Review: '#c7cdda', Agent: '#f5b942', Tool: '#8f9ab0', You: '#5fd38a',
+    Policy: '#7fd1ff', Deals: '#5fd38a', 'Red team': '#ef5d6f' };
+  // The agent team strip: which sub-agent is working right now.
+  const TEAM = { Planner: 'planner', Review: 'planner', Map: 'planner', CoStar: 'market', Vexcel: 'market', Forensics: 'market',
+    Matterport: 'feas', Feasibility: 'feas', Safety: 'feas', Policy: 'policy', Deals: 'deals', 'Red team': 'red' };
+  function pulse(who) {
+    const el = document.querySelector(`#team [data-a="${TEAM[who]}"]`); if (!el) return;
+    document.querySelectorAll('#team .on').forEach(x => x.classList.remove('on'));
+    el.classList.add('on', 'used'); clearTimeout(pulse.t); pulse.t = setTimeout(() => el.classList.remove('on'), 1800);
+  }
   LW.log = function (who, text) {
     const d = document.createElement('div'); d.className = 'step';
     d.innerHTML = `<span class="who" style="background:${WHO[who] || '#8f9ab0'}">${who.toUpperCase()}</span><span>${text}</span>`;
-    $('log').appendChild(d); d.scrollIntoView({ block: 'nearest' }); return d;
+    $('log').appendChild(d); d.scrollIntoView({ block: 'nearest' }); pulse(who); return d;
   };
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   // The backend defaults to localhost:8000; set BACKEND_URL: "" in config.js to force the offline agent.
@@ -60,7 +69,8 @@
     o: LW.B.filter(b => Object.keys(b.overrides).length || b.forceLW != null).map(b => [b.id, b.overrides, b.forceLW]) });
 
   function reset() {
-    $('log').innerHTML = ''; LW.scored = false; LW.flagsShown = false; LW.reviewed = null;
+    $('log').innerHTML = ''; document.querySelectorAll('#team span').forEach(x => x.classList.remove('on', 'used'));
+    if (LW.showMoves) LW.showMoves(null, null, true); LW.scored = false; LW.flagsShown = false; LW.reviewed = null;
     LW.B.forEach(b => { b.score = null; b.plan = null; }); LW.B.forEach(b => LW.view.paint(b)); LW.view.setFlags([]);
   }
   async function reveal() {
@@ -130,19 +140,47 @@
         } else review.push(`${g.id}'s ${g.label} is still an estimate.`);
       }
     }
-    const best = passing()[0];
+    const lead = await runDeal();
+    const best = (lead && passing().find(b => b.id === lead)) || passing()[0];
     LW.log('Review', `Kept ${passing().length} towers.${fails.length ? ` Dropped ${fails.map(b => b.id).join(', ')} as likely fire-safety blockers.` : ''} Ranking checked against the brief.`); await sleep(500);
     if (best) LW.reviewed = { top: best.id, summary: LW.summary(best), rationale: '', review, key: LW.inputsKey(), at: new Date(), by: 'the in-browser agent' };
     return best;
   }
 
+  // Policy screen, tenant moves and red team for the leading towers (same order as run_deal in backend/agent.py).
+  async function runDeal() {
+    const P = passing(); if (!P.length) return null;
+    const fts = P.slice(0, 5).map(b => [b, LW.fastTrack(b)]);
+    const ready = fts.filter(([, f]) => f.status === 'ready').map(([b]) => b.id), sh = fts.filter(([, f]) => f.status === 'shuffle');
+    LW.log('Policy', `Texas fast-track (SB 840/2477, 65% residential): ${ready.length} ready now${ready.length ? ' (' + ready.slice(0, 4).join(', ') + ')' : ''}; `
+      + `${sh.length} need tenant moves${sh.length ? `, e.g. ${sh[0][0].id} needs ${sh[0][1].short} more empty floors` : ''}.`); await sleep(700);
+    for (const b of P.slice(0, 4)) {
+      const ft = LW.fastTrack(b); if (ft.status === 'unknown') continue;
+      if (ft.status !== 'shuffle') return b.id;
+      const ts = LW.tenantsOf(b);
+      LW.log('CoStar', `${b.id}: ${ts.length} tenants (${ts.every(x => x.src === 'COSTAR') ? 'CoStar records' : '<i>simulated</i>'}); ${ts.filter(x => x.lease_end <= LW.POLICY.year + 1).length} leases end by ${LW.POLICY.year + 1}.`);
+      const plan = LW.planMoves(b, LW.B, 'fast'), ch = LW.challengePlan(b, plan, LW.B);
+      LW.showMoves(plan, null); await sleep(500);
+      LW.log('Deals', `${b.id}: move ${plan.moves.length} tenants (${plan.freed_floors} floors) into ${plan.receivers.join(', ') || 'no tower'} → ${LW.fmt(plan.homes_after)} homes can start now (+${LW.fmt(plan.homes_gained)}); `
+        + `incentives about ${LW.bigMoney(plan.cost)}${plan.cost_per_home_gained ? `, ${LW.money(plan.cost_per_home_gained)} per home unlocked` : ''}.${plan.fast_track_after ? ' Reaches the fast-track.' : ' Still short of the fast-track.'}`);
+      await sleep(900);
+      const top = ch.risks.filter(r => r.level !== 'low');
+      LW.showMoves(plan, ch, true);
+      LW.log('Red team', `${b.id}: ${LW.VERDICT[ch.verdict].toLowerCase()}.${top.length ? ' Biggest risk: ' + top[0].text : ' No serious objection.'}${top.length > 1 ? ` (+${top.length - 1} more)` : ''}`);
+      await sleep(900);
+      if (ch.verdict !== 'weak') return b.id;
+      LW.log('Planner', `Red team found the plan for ${b.id} weak; trying the next tower.`); await sleep(500);
+    }
+    return P[0].id;
+  }
+
   // ---------------- backend plan (SSE over fetch) ----------------
   function payload() {
-    const f = ['rep', 'year', 'obs', 'f2f', 'core', 'plate', 'floors'];
+    const f = ['rep', 'year', 'obs', 'f2f', 'core', 'plate', 'floors', 'vacant'];
     return { prompt: $('prompt').value, constraints: { ...LW.S }, assumptions: { ...LW.A }, key: LW.inputsKey(),
       buildings: LW.B.map(b => ({ id: b.id, W: b.W, D: b.D, heightM: b.heightM, floors: LW.eff(b, 'floors'), f2f: LW.eff(b, 'f2f'),
         year: LW.eff(b, 'year'), rep: LW.eff(b, 'rep'), obs: b.obs || [], scanned: b.scanned, core: LW.eff(b, 'core'),
-        forceLW: b.forceLW, real: b.real, src: Object.fromEntries(f.map(k => [k, LW.srcOf(b, k)])) })) };
+        forceLW: b.forceLW, real: b.real, vacantFloors: b.vacantFloors || [], center: b.center, tenants: Array.isArray(b.tenants) ? b.tenants : null, src: Object.fromEntries(f.map(k => [k, LW.srcOf(b, k)])) })) };
   }
   async function runBackend() {
     const url = backendUrl();
@@ -161,7 +199,9 @@
           if (ev.stage === 'scored' && !LW.scored) await reveal();
           if (ev.stage === 'flags') { LW.flagsShown = true; LW.refresh(); }
           const b = ev.ids && ev.ids.length ? LW.B.find(x => x.id === ev.ids[0]) : null; if (b) LW.onSelect(b, true);
-        } else if (ev.type === 'brief') { LW.setBrief(ev.brief); if (LW.scored) LW.analyzeAll(); }
+        } else if (ev.type === 'moves') { LW.showMoves(ev.plan, null); }
+        else if (ev.type === 'challenge') { if (LW.movePlan && LW.movePlan.tower === ev.tower) LW.showMoves(LW.movePlan, ev, true); }
+        else if (ev.type === 'brief') { LW.setBrief(ev.brief); if (LW.scored) LW.analyzeAll(); }
         else if (ev.type === 'ask') {
           // don't block the stream reader: answer in the background
           LW.askUser({ ...ev, tower: ev.tower, source: (LW.B.find(x => x.id === ev.tower) && LW.srcOf(LW.B.find(x => x.id === ev.tower), ev.field)) })
@@ -181,6 +221,7 @@
     LW.flagsShown = true; LW.refresh();
     const diff = LW.B.filter(b => { const r = result.results[b.id]; return r && (r.score !== b.score || r.homes !== b.plan.homes || r.passes !== b.pass); });
     if (diff.length) LW.log('Review', `Warning: browser and backend disagree on ${diff.length} towers (${diff.slice(0, 3).map(b => b.id).join(', ')}). Re-run the agent.`);
+    LW.showMoves(result.moves || null, result.challenge || null, true);
     const best = result.top ? LW.B.find(b => b.id === result.top) : null;
     if (best) LW.reviewed = { top: best.id, summary: result.reviewed, rationale: result.memo || '', review: result.review || [], key: LW.inputsKey(), at: new Date(),
       by: agent.backend && agent.backend.llm ? `${agent.backend.model} via deepagents` : 'the backend agent' };

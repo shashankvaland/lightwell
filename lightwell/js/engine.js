@@ -20,6 +20,8 @@
     maxTravelFt: 250,        // typical max exit-access travel to a stair (sprinklered residential)
     unknownVacancy: 0.25,    // used only when neither leasing nor parking evidence exists (Houston average, 2026)
     unknownYear: 1970,       // used only when year built is missing: conservative (abatement + sprinkler retrofit)
+    moveCostSqft: 15,        // tenant move: moving + fit-out allowance, $ per sq ft (tenant moves)
+    buyoutSqftYr: 30,        // early lease exit: rent concession, $ per sq ft per year left after next year
   };
   // The brief: live constraints from the request and the sliders.
   LW.S = { u: 30, cap: 300000, allowLW: true, minHomes: 20, useParking: true, require: [] };

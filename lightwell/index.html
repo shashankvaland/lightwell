@@ -17,7 +17,7 @@
 
 <aside id="left">
   <h1><i></i>Lightwell</h1>
-  <div class="sub">Downtown Houston: which offices can become homes?</div>
+  <div class="sub">Downtown Houston: which offices can become homes? <a href="#" id="whyHouston">Why now?</a></div>
   <div id="dataMode" class="seg" title="Demo fill-in simulates missing values on anonymous towers; Real data only never invents a value">
     <button data-m="demo">Demo fill-in</button><button data-m="real">Real data only</button></div>
   <div class="note" id="dataNote"></div>
@@ -26,6 +26,7 @@
   <textarea id="prompt">Find offices downtown I can turn into homes for under $300k a home.</textarea>
   <div class="btns"><button id="run" class="primary" disabled>Loading…</button></div>
   <div id="mode" class="mode">Checking for the agent backend…</div>
+  <div id="team" title="The agent team: lights up while each sub-agent works"><span data-a="planner">Planner</span><span data-a="market">Market</span><span data-a="feas">Feasibility</span><span data-a="policy">Policy</span><span data-a="deals">Deals</span><span data-a="red">Red team</span></div>
   <div id="log"></div>
 
   <h2>Brief (live)</h2>
@@ -76,6 +77,40 @@
   <div id="svMsg"></div>
 </div>
 
+<div id="intro" role="dialog" aria-modal="true" aria-labelledby="introTitle"><div class="ibox">
+  <div class="kicker">Houston · 2026</div>
+  <h2 id="introTitle">Texas now lets empty offices become homes. Houston has the offices.</h2>
+  <div class="istats">
+    <div><b>~1 in 4</b><span>Houston office space sits vacant (25.2%, CBRE, Q4 2025)</span></div>
+    <div><b>Sep 1, 2025</b><span>Texas SB 840 &amp; SB 2477 take effect: office-to-home conversions by right</span></div>
+    <div><b>65%</b><span>of the building (and of each occupied floor) must become homes to use the fast-track</span></div>
+  </div>
+  <div class="icols">
+    <div><h3>What the law changed</h3>
+      <p>In Texas cities over 150,000 people, which includes Houston, an office building at least 5 years old can now become housing
+      <b>without rezoning, a traffic study or extra parking</b>. Houston never had zoning, so the law mostly removes the studies and parking
+      demands that slow a project down.</p></div>
+    <div><h3>Why towers still sit empty</h3>
+      <p>Downtown Houston's own conversion study found market forces alone are unlikely to trigger conversions. The blockers are physical and
+      financial: <b>floors too deep for bedroom windows</b>, high retrofit costs, and <b>tenants scattered across floors</b> on long leases, so a
+      tower that is 40% empty can't reach 65% homes.</p></div>
+    <div><h3>What Lightwell does</h3>
+      <p>A team of AI agents screens every downtown tower: it <b>tests each floor for daylight</b>, checks the <b>65% rule</b>, plans the
+      <b>tenant moves</b> into nearby half-empty offices that would unlock a tower, and a <b>red-team agent</b> attacks the plan before you see it.</p></div>
+  </div>
+  <div class="ilive" id="introLive"></div>
+  <div class="ifoot">
+    <label class="chk"><input type="checkbox" id="introSkip"> Don't show at start</label>
+    <button id="introGo" class="primary">Explore downtown Houston</button>
+  </div>
+  <div class="isrc">Sources:
+    <a href="https://www.foley.com/insights/publications/2025/11/client-briefing-texas-senate-bill-840-and-texas-senate-bill-2477-89th-legislatu/" target="_blank" rel="noopener">Foley: SB 840 &amp; SB 2477</a> ·
+    <a href="https://capitol.texas.gov/BillLookup/History.aspx?LegSess=89R&amp;Bill=SB840" target="_blank" rel="noopener">Texas Legislature: SB 840</a> ·
+    <a href="https://mktgdocs.cbre.com/2299/c96e5094-5c69-4ad9-af7c-6f3f0b66728d-369846707/CBRE_Houston_Office_Figures_Q4.pdf" target="_blank" rel="noopener">CBRE Houston Office Q4 2025</a> ·
+    <a href="https://realtynewsreport.com/new-office-conversion-study-by-downtown-houston/" target="_blank" rel="noopener">Downtown Houston+ / AECOM conversion study</a>.
+    A screening tool, not legal advice.</div>
+</div></div>
+
 <div id="evidence"><header><b id="evTitle">Evidence</b><button id="evClose">Close</button></header><div id="evBody"></div></div>
 
 <div id="modal"><div class="box">
@@ -94,10 +129,12 @@
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/data.js"></script>
+<script src="js/shuffle.js"></script>
 <script src="js/views.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/agent.js"></script>
 <script src="js/streetview.js"></script>
-<script>LW.start();</script>
+<script src="js/intro.js"></script>
+<script>LW.start().then(() => LW.intro.maybe());</script>
 </body>
 </html>

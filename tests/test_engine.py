@@ -99,3 +99,35 @@ def test_js_python_parity():
             assert check_layout(b.plan["L"], b.W, b.D) == []
             n += 1
     assert n > 100
+
+
+@pytest.mark.skipif(not JS.exists(), reason="run `node tests/parity.mjs` first")
+def test_fast_track_and_moves_parity():
+    from shuffle import challenge_plan, fast_track, plan_moves
+    data = json.loads(JS.read_text())
+    moved = 0
+    for sc in data:
+        bs = [analyze(Building(**row["input"]), sc["S"], sc["A"]) for row in sc["rows"]]
+        for b, row in zip(bs, sc["rows"]):
+            assert fast_track(b) == row["fastTrack"], b.id
+            for goal in ("fast", "empty"):
+                assert plan_moves(b, bs, goal, sc["A"]) == row["moves"][goal], (b.id, goal)
+            assert challenge_plan(b, row["moves"]["fast"], bs) == row["challenge"], b.id
+            moved += len((row["moves"]["fast"] or {}).get("moves", []))
+    assert moved > 10
+
+
+def test_moves_free_enough_floors_and_never_target_self():
+    from shuffle import fast_track, plan_moves
+    data = json.loads(JS.read_text()) if JS.exists() else None
+    if not data:
+        pytest.skip("run `node tests/parity.mjs` first")
+    sc = data[0]
+    bs = [analyze(Building(**row["input"]), sc["S"], sc["A"]) for row in sc["rows"]]
+    for b in bs:
+        ft, p = fast_track(b), plan_moves(b, bs, "fast", sc["A"])
+        if p is None:
+            continue
+        assert all(m["to"] != b.id for m in p["moves"])
+        if ft["status"] == "shuffle" and not p["unplaced"]:
+            assert p["fast_track_after"] and ft["free"] + p["freed_floors"] >= ft["need"]
