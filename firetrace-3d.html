@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FireTrace LA 3D</title>
+<style>
+  :root{
+    --bg:#0e1119; --panel:rgba(18,22,32,.86); --line:rgba(255,255,255,.09);
+    --ink:#e8ebf2; --muted:#8e96a8; --ember:#e4491c; --amber:#f2a03d; --cyan:#4fd1e0;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  #app{position:fixed;inset:0}
+  #app.picking{cursor:crosshair}
+  aside{position:fixed;top:14px;bottom:78px;width:292px;background:var(--panel);backdrop-filter:blur(10px);
+    border:1px solid var(--line);border-radius:12px;padding:16px;overflow-y:auto}
+  #left{left:14px} #right{right:14px}
+  h1{font-size:19px;margin:0;letter-spacing:-.2px}
+  h1 span{color:var(--ember)}
+  .sub{color:var(--muted);margin:2px 0 12px}
+  h2{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--amber);margin:16px 0 8px}
+  .note{font-size:11.5px;color:var(--muted);background:rgba(255,255,255,.04);border-left:2px solid var(--amber);
+    padding:7px 9px;border-radius:4px}
+  label.row{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-top:6px}
+  label.row b{color:var(--ink);font-weight:600}
+  input[type=range]{width:100%;accent-color:var(--ember)}
+  button{font:inherit;color:var(--ink);background:rgba(255,255,255,.06);border:1px solid var(--line);
+    border-radius:7px;padding:7px 10px;cursor:pointer}
+  button:hover{background:rgba(255,255,255,.12)}
+  button.primary{background:var(--ember);border-color:var(--ember);color:#fff;font-weight:600}
+  button.primary:hover{background:#f05a2c}
+  button.on{background:rgba(228,73,28,.22);border-color:var(--ember)}
+  .btns{display:flex;gap:6px;flex-wrap:wrap}
+  .btns button{flex:1}
+  .checks label{display:flex;align-items:center;gap:7px;margin:4px 0;color:var(--ink);font-size:12.5px}
+  .stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+  .stat{background:rgba(255,255,255,.04);border-radius:7px;padding:7px 8px}
+  .stat b{display:block;font-size:16px}
+  .stat span{color:var(--muted);font-size:10.5px}
+  #trace{margin-top:8px;font-size:12px;display:none}
+  #trace div{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--line)}
+  #trace div span:first-child{color:var(--muted)}
+  .legend{height:8px;border-radius:4px;margin-top:6px;
+    background:linear-gradient(90deg,#fff28c,#ff9926,#e64026,#8c1a59,#381459)}
+  .legend-l{display:flex;justify-content:space-between;color:var(--muted);font-size:10.5px}
+  #bar{position:fixed;left:320px;right:320px;bottom:14px;height:52px;background:var(--panel);
+    border:1px solid var(--line);border-radius:12px;display:flex;align-items:center;gap:12px;padding:0 14px}
+  #bar input{flex:1}
+  #clock{font-variant-numeric:tabular-nums;font-weight:700;min-width:78px}
+  #play{width:38px;height:34px;padding:0;font-size:14px}
+  select{font:inherit;color:var(--ink);background:#1a1f2c;border:1px solid var(--line);border-radius:6px;padding:5px}
+  .rank{display:flex;align-items:center;gap:8px;padding:7px 6px;border-radius:7px;cursor:pointer}
+  .rank:hover,.rank.sel{background:rgba(255,255,255,.07)}
+  .rank .sc{width:34px;text-align:center;font-weight:700;border-radius:5px;padding:2px 0;color:#111}
+  .rank .nm{flex:1;min-width:0}
+  .rank .nm small{display:block;color:var(--muted)}
+  #card{display:none;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:9px;padding:11px;margin-bottom:6px}
+  #card h3{margin:0;font-size:14px}
+  #card .meta{color:var(--muted);font-size:11.5px;margin-bottom:8px}
+  .scorebar{height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;margin:4px 0 10px}
+  .scorebar i{display:block;height:100%}
+  .find{font-size:12px;margin:5px 0;display:flex;gap:6px}
+  .tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;padding:1px 5px;border-radius:3px;height:fit-content;white-space:nowrap}
+  .t-vex{background:#2f7f86}.t-mp{background:#3f5e9a}.t-cs{background:#7a4ea3}.t-sim{background:#b5361a}
+  .act{font-size:12px;margin:4px 0 0 0;padding-left:16px}
+  #hint{position:fixed;top:18px;left:50%;transform:translateX(-50%);background:var(--ember);color:#fff;
+    padding:7px 14px;border-radius:20px;font-weight:600;display:none;pointer-events:none}
+  @media (max-width:900px){
+    aside{width:auto;left:8px!important;right:8px!important}
+    #right{display:none} #left{bottom:auto;max-height:46vh;top:8px}
+    #bar{left:8px;right:8px}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="hint">Click the terrain to set a new ignition point</div>
+
+<aside id="left">
+  <h1>Fire<span>Trace</span> LA</h1>
+  <div class="sub">3D spread, forensics and building exposure</div>
+  <div class="note">Simulated scenario on procedural terrain. Real elevation, NASA FIRMS detections and CoStar, Vexcel and Matterport data plug into the same pipeline.</div>
+
+  <h2>Wind</h2>
+  <label class="row">Speed <b id="wsL"></b></label>
+  <input id="ws" type="range" min="0" max="50" value="28">
+  <label class="row">Blowing from <b id="wdL"></b></label>
+  <input id="wd" type="range" min="0" max="359" value="40">
+
+  <h2>Ignition</h2>
+  <div class="btns"><button id="pick">Set new ignition point</button></div>
+
+  <h2>Forensics</h2>
+  <div class="btns"><button id="bt" class="primary">Run origin back-trace</button></div>
+  <div id="trace"></div>
+
+  <h2>View</h2>
+  <div class="btns"><button id="mFire" class="on">Live fire</button><button id="mArr">Arrival map</button></div>
+  <div id="legend" style="display:none"><div class="legend"></div><div class="legend-l"><span>0 h</span><span>6 h</span><span>12 h</span></div></div>
+  <div class="checks" style="margin-top:8px">
+    <label><input type="checkbox" id="cHot" checked> Satellite hot spots</label>
+    <label><input type="checkbox" id="cBld" checked> Buildings by exposure</label>
+    <label><input type="checkbox" id="cTrue"> True origin</label>
+  </div>
+
+  <h2>Right now</h2>
+  <div class="stats">
+    <div class="stat"><b id="sArea">0</b><span>hectares burned</span></div>
+    <div class="stat"><b id="sFront">0</b><span>cells burning</span></div>
+    <div class="stat"><b id="sBld">0</b><span>buildings hit</span></div>
+  </div>
+</aside>
+
+<aside id="right">
+  <div id="card"></div>
+  <h2 style="margin-top:0">Exposure ranking</h2>
+  <div id="ranking"></div>
+  <div class="note" style="margin-top:10px">Building attributes are simulated stand-ins for the Vexcel, Matterport and CoStar layers.</div>
+</aside>
+
+<div id="bar">
+  <button id="play">▶</button>
+  <span id="clock">T+00.0 h</span>
+  <input id="time" type="range" min="0" max="12" step="0.01" value="0">
+  <select id="spd"><option value="0.4">0.4 h/s</option><option value="1" selected>1 h/s</option><option value="2.5">2.5 h/s</option></select>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// ---------------- constants and terrain ----------------
+const N = 96, SIZE = 200, CS = SIZE / (N - 1), MPU = 50;   // 50 m per world unit -> ~10 km map
+const BURN = 0.6, T_MAX = 12, BASE = 340;                    // burn duration h, horizon h, base spread m/h
+const CELL_HA = (CS * MPU) ** 2 / 10000;
+const H = new Float32Array(N * N), F = new Float32Array(N * N), MASK = new Float32Array(N * N);
+const SEED = 7;
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const sstep = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+function hash(x, y) { let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(SEED, 1442695041);
+  h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967296; }
+function vn(x, y) { const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash(xi, yi), b = hash(xi + 1, yi), c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; }
+function fbm(x, y, o) { let s = 0, a = .5, f = 1, n = 0; for (let i = 0; i < o; i++) { s += a * vn(x * f, y * f); n += a; a *= .5; f *= 2; } return s / n; }
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const wx = ix => -SIZE / 2 + ix * CS, wz = iz => -SIZE / 2 + iz * CS;
+const isRoad = (ix, iz) => iz / (N - 1) > 0.72 && (ix % 7 === 0 || iz % 7 === 0);
+const isFreeway = iz => Math.abs(iz / (N - 1) - 0.68) < 0.011;
+
+for (let iz = 0; iz < N; iz++) for (let ix = 0; ix < N; ix++) {
+  const i = iz * N + ix, u = iz / (N - 1), v = ix / (N - 1);
+  const m = sstep(0.72, 0.28, u); MASK[i] = m;
+  const r = 1 - Math.abs(fbm(v * 3 + 11, u * 3 + 7, 4) * 2 - 1);
+  H[i] = m * (fbm(v * 4, u * 4, 5) * 36 + r * r * 16 + 2) + 1.0 * fbm(v * 12, u * 12, 2);
+  let f = u > 0.7 ? 0.22 + 0.2 * fbm(v * 9 + 2, u * 9 + 9, 3) : 0.2 + m * 0.9 * (0.65 + 0.6 * fbm(v * 7 + 5, u * 7 + 3, 3));
+  if (isRoad(ix, iz)) f = 0.1;
+  if (isFreeway(iz)) f = 0.05;
+  F[i] = clamp(f, 0.04, 1.2);
+}
+
+// ---------------- spread model (anisotropic shortest arrival time) ----------------
+const DX = [1,-1,0,0,1,1,-1,-1, 2,2,-2,-2,1,1,-1,-1];
+const DZ = [0,0,1,-1,1,-1,1,-1, 1,-1,1,-1,2,-2,2,-2];
+let windSpeed = 28, windFrom = 40, WX = 0, WZ = 0;
+function setWind() { const r = windFrom * Math.PI / 180; WX = -Math.sin(r); WZ = Math.cos(r); }
+function stepCost(a, b, dx, dz) {
+  const fb = F[b]; if (fb < 0.045) return Infinity;
+  const len = Math.hypot(dx, dz), dist = len * CS;
+  const cos = (dx * WX + dz * WZ) / len;
+  const wf = Math.max(Math.exp(0.075 * windSpeed * cos), 0.12);
+  const sf = clamp(Math.exp(2.2 * (H[b] - H[a]) / dist), 0.45, 5);
+  return dist * MPU / (BASE * ((F[a] + fb) / 2) * wf * sf);
+}
+class Heap { constructor() { this.k = []; this.v = []; } get size() { return this.k.length; }
+  push(k, v) { const K = this.k, V = this.v; let i = K.length; K.push(k); V.push(v);
+    while (i > 0) { const p = (i - 1) >> 1; if (K[p] <= k) break; K[i] = K[p]; V[i] = V[p]; i = p; } K[i] = k; V[i] = v; }
+  pop() { const K = this.k, V = this.v, rk = K[0], rv = V[0], lk = K.pop(), lv = V.pop(), n = K.length;
+    if (n) { let i = 0; for (;;) { const l = 2 * i + 1; if (l >= n) break; const r = l + 1; const c = (r < n && K[r] < K[l]) ? r : l;
+      if (K[c] >= lk) break; K[i] = K[c]; V[i] = V[c]; i = c; } K[i] = lk; V[i] = lv; }
+    this.top = rk; return rv; } }
+// forward: arrival time from sources. reverse: time for fire to travel from each cell TO the source.
+function spread(sources, reverse) {
+  const T = new Float32Array(N * N).fill(Infinity), hp = new Heap();
+  for (const s of sources) { T[s] = 0; hp.push(0, s); }
+  while (hp.size) { const i = hp.pop(), t = hp.top; if (t > T[i]) continue; if (t > T_MAX * 1.6) break;
+    const ix = i % N, iz = (i / N) | 0;
+    for (let k = 0; k < 16; k++) { const nx = ix + DX[k], nz = iz + DZ[k]; if (nx < 0 || nz < 0 || nx >= N || nz >= N) continue;
+      const j = nz * N + nx, c = reverse ? stepCost(j, i, -DX[k], -DZ[k]) : stepCost(i, j, DX[k], DZ[k]);
+      const nt = t + c; if (nt < T[j]) { T[j] = nt; hp.push(nt, j); } } }
+  return T;
+}
+
+// ---------------- scene ----------------
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
+app.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0e1119); scene.fog = new THREE.FogExp2(0x0e1119, 0.0028);
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 1, 2000);
+camera.position.set(-40, 150, 210);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = 1.45; controls.target.set(0, 5, 10); controls.minDistance = 30; controls.maxDistance = 500;
+scene.add(new THREE.HemisphereLight(0xaabbdd, 0x30261c, 0.75));
+const sun = new THREE.DirectionalLight(0xffe6c8, 0.85); sun.position.set(-90, 120, 40); scene.add(sun);
+const fireLight = new THREE.PointLight(0xff6a20, 0, 160, 1.4); scene.add(fireLight);
+
+const geo = new THREE.PlaneGeometry(SIZE, SIZE, N - 1, N - 1); geo.rotateX(-Math.PI / 2);
+for (let i = 0; i < N * N; i++) geo.attributes.position.setY(i, H[i]);
+geo.computeVertexNormals();
+const COL = new Float32Array(N * N * 3); geo.setAttribute('color', new THREE.BufferAttribute(COL, 3));
+const terrain = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
+scene.add(terrain);
+
+const BASEC = new Float32Array(N * N * 3);
+for (let iz = 0; iz < N; iz++) for (let ix = 0; ix < N; ix++) {
+  const i = iz * N + ix, n = fbm(ix / N * 14, iz / N * 14, 2), m = MASK[i];
+  const dry = clamp(H[i] / 42 + n * 0.45 - 0.1, 0, 1);
+  let r = 0.17 + (0.47 - 0.17) * dry, g = 0.24 + (0.41 - 0.24) * dry, b = 0.13 + (0.27 - 0.13) * dry;
+  const ur = 0.32 - n * 0.1, ug = 0.34 - n * 0.04, ub = 0.34 - n * 0.12, k = sstep(0.04, 0.5, m);
+  r = ur + (r - ur) * k; g = ug + (g - ug) * k; b = ub + (b - ub) * k;
+  if (isRoad(ix, iz)) { r = g = 0.2; b = 0.22; }
+  if (isFreeway(iz)) { r = 0.52; g = 0.52; b = 0.55; }
+  BASEC.set([r, g, b], i * 3);
+}
+
+function glowTex() { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)');
+  gr.addColorStop(.3, 'rgba(255,255,255,.75)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c); }
+const GLOW = glowTex();
+function pointsLayer(max, size) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(max * 3), 3));
+  g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(max * 3), 3));
+  g.setDrawRange(0, 0);
+  const p = new THREE.Points(g, new THREE.PointsMaterial({ size, map: GLOW, vertexColors: true, transparent: true,
+    depthWrite: false, blending: THREE.AdditiveBlending }));
+  scene.add(p); return p;
+}
+const embers = pointsLayer(N * N, 4.2);
+const hotPts = pointsLayer(4000, 3.2);
+const zonePts = pointsLayer(N * N, 2.6);
+
+// wind arrow
+const windArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 26, 0x7fd3ff, 7, 4);
+scene.add(windArrow);
+
+// origin markers
+const trueOrigin = new THREE.Group();
+trueOrigin.add(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 40, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .75 })));
+const ring = new THREE.Mesh(new THREE.RingGeometry(2.2, 2.9, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+ring.rotation.x = -Math.PI / 2; ring.position.y = -19.5; trueOrigin.add(ring); trueOrigin.visible = false; scene.add(trueOrigin);
+const estMarker = new THREE.Mesh(new THREE.ConeGeometry(2.4, 7, 20), new THREE.MeshBasicMaterial({ color: 0x4fd1e0 }));
+estMarker.rotation.x = Math.PI; estMarker.visible = false; scene.add(estMarker);
+const selRing = new THREE.Mesh(new THREE.RingGeometry(4, 4.8, 40), new THREE.MeshBasicMaterial({ color: 0x4fd1e0, side: THREE.DoubleSide }));
+selRing.rotation.x = -Math.PI / 2; selRing.visible = false; scene.add(selRing);
+
+// ---------------- buildings (simulated stand-ins for CoStar / Vexcel / Matterport) ----------------
+const ROOFS = [{ n: 'Clay tile', r: .15 }, { n: 'Composite shingle', r: .5 }, { n: 'Wood shake', r: 1 }, { n: 'Standing-seam metal', r: .1 }, { n: 'Built-up gravel', r: .35 }];
+const TYPES = ['Office', 'Retail', 'Industrial', 'Multifamily', 'Medical office', 'Flex', 'Hotel'];
+const rng = mulberry(42), buildings = [];
+for (let tries = 0; buildings.length < 46 && tries < 3000; tries++) {
+  const wui = buildings.length < 13;
+  const u = wui ? 0.5 + rng() * 0.15 : 0.73 + rng() * 0.23, v = 0.05 + rng() * 0.9;
+  const ix = Math.round(v * (N - 1)), iz = Math.round(u * (N - 1)), i = iz * N + ix;
+  if (F[i] < 0.12 || isFreeway(iz) || isRoad(ix, iz)) continue;
+  if (buildings.some(b => Math.abs(b.ix - ix) < 4 && Math.abs(b.iz - iz) < 4)) continue;
+  const veg = clamp(MASK[i] * 1.1 + rng() * 0.35, 0, 1);
+  const h = wui ? 1.6 + rng() * 2.4 : 2 + rng() * 9, w = 2.6 + rng() * 3, d = 2.6 + rng() * 3;
+  const b = { id: 'FT-' + String(101 + buildings.length), ix, iz, i, wui,
+    type: wui ? (rng() < .5 ? 'Multifamily' : 'Office') : TYPES[(rng() * TYPES.length) | 0],
+    year: 1952 + ((rng() * 68) | 0), sqft: Math.round((wui ? 8 : 15 + rng() * 120) * 1000 * (0.6 + rng())),
+    roof: ROOFS[wui && rng() < .5 ? 2 : (rng() * ROOFS.length) | 0], veg, clear: Math.max(1, Math.round(32 * (1 - veg) + rng() * 4)),
+    vents: (rng() * 9) | 0, glazing: rng() < .4 ? 'Single-pane' : 'Dual-pane tempered', value: 0 };
+  b.value = Math.round(b.sqft * (180 + rng() * 260) / 1e5) / 10;
+  const mat = new THREE.MeshStandardMaterial({ color: 0x999999, roughness: .7, metalness: .1 });
+  b.mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  b.mesh.position.set(wx(ix), H[i] + h / 2 - 0.4, wz(iz)); b.mesh.userData.b = b; b.h = h;
+  scene.add(b.mesh); buildings.push(b);
+}
+
+// ---------------- simulation state ----------------
+let origin = Math.round(0.2 * (N - 1)) * N + Math.round(0.7 * (N - 1));
+let ARR = null, hot = [], t = 0, playing = false, mode = 'fire', selected = null, flyTo = null, traced = false;
+
+function scoreColor(s) { const c = new THREE.Color(); const a = new THREE.Color(0x3fa7a0), m = new THREE.Color(0xf2a03d), h = new THREE.Color(0xe4491c);
+  return s < 50 ? c.copy(a).lerp(m, s / 50) : c.copy(m).lerp(h, (s - 50) / 50); }
+
+function rerun() {
+  setWind();
+  ARR = spread([origin], false);
+  // satellite passes every 1.5 h: detect cells that are burning at pass time
+  const r = mulberry(9); hot = [];
+  for (let p = 0.75; p <= T_MAX; p += 1.5) {
+    const burning = []; for (let i = 0; i < N * N; i++) if (ARR[i] <= p && ARR[i] > p - BURN) burning.push(i);
+    for (let k = burning.length - 1; k > 0; k--) { const j = (r() * (k + 1)) | 0; [burning[k], burning[j]] = [burning[j], burning[k]]; }
+    for (const i of burning.slice(0, Math.max(3, Math.ceil(burning.length * .35)))) hot.push({ i, t: p, jx: (r() - .5) * CS, jz: (r() - .5) * CS });
+  }
+  const hp = hotPts.geometry.attributes.position, hc = hotPts.geometry.attributes.color;
+  hot.forEach((h, k) => { const ix = h.i % N, iz = (h.i / N) | 0; hp.setXYZ(k, wx(ix) + h.jx, H[h.i] + 3.5, wz(iz) + h.jz); hc.setXYZ(k, 1, .15, .35); });
+  hp.needsUpdate = hc.needsUpdate = true;
+  // building exposure
+  for (const b of buildings) {
+    b.arr = ARR[b.i];
+    const tf = b.arr <= T_MAX ? 1 - 0.8 * b.arr / T_MAX : 0.08;
+    b.score = Math.round(100 * (0.45 * tf + 0.22 * b.veg + 0.18 * b.roof.r + 0.15 * Math.min(b.vents / 8, 1)));
+    b.mesh.material.color.copy(scoreColor(b.score));
+  }
+  const ox = origin % N, oz = (origin / N) | 0;
+  trueOrigin.position.set(wx(ox), H[origin] + 20, wz(oz));
+  windArrow.setDirection(new THREE.Vector3(WX, 0, WZ));
+  windArrow.position.set(-SIZE / 2 + 22 - WX * 13, 58, -SIZE / 2 + 22 - WZ * 13);
+  clearTrace(); renderRanking(); if (selected) renderCard(selected);
+}
+
+// ---------------- forensics: back-trace the origin from hot spots ----------------
+function clearTrace() { traced = false; estMarker.visible = false; zonePts.geometry.setDrawRange(0, 0);
+  document.getElementById('trace').style.display = 'none'; }
+function backTrace() {
+  // use the first three satellite passes that saw fire
+  const passes = [...new Set(hot.map(h => h.t))].slice(0, 3);
+  const r = mulberry(5), det = [];
+  for (const p of passes) { const hs = hot.filter(h => h.t === p); for (let k = 0; k < Math.min(6, hs.length); k++) {
+    const h = hs[Math.floor(k * hs.length / Math.min(6, hs.length))]; det.push({ i: h.i, obs: p - BURN / 2 + (r() - .5) * 0.25 }); } }
+  const D = det.map(d => spread([d.i], true));
+  const sd = new Float32Array(N * N).fill(Infinity), mean = new Float32Array(N * N);
+  let best = -1;
+  for (let c = 0; c < N * N; c++) { let s = 0, s2 = 0, ok = true;
+    for (let k = 0; k < det.length; k++) { const v = D[k][c]; if (!isFinite(v)) { ok = false; break; } const t0 = det[k].obs - v; s += t0; s2 += t0 * t0; }
+    if (!ok) continue; const m = s / det.length; mean[c] = m; sd[c] = Math.sqrt(Math.max(0, s2 / det.length - m * m));
+    if (m > passes[0] + 0.05) sd[c] = Infinity;             // ignition must precede first detection
+    if (best < 0 || sd[c] < sd[best]) best = c; }
+  const thr = sd[best] + 0.12, zp = zonePts.geometry.attributes.position, zc = zonePts.geometry.attributes.color; let n = 0;
+  for (let c = 0; c < N * N; c++) if (sd[c] <= thr) { const q = 1 - (sd[c] - sd[best]) / 0.12;
+    zp.setXYZ(n, wx(c % N), H[c] + 1.2, wz((c / N) | 0)); zc.setXYZ(n, .2 * q + .05, .7 * q + .1, .8 * q + .12); n++; }
+  zp.needsUpdate = zc.needsUpdate = true; zonePts.geometry.setDrawRange(0, n);
+  const bx = best % N, bz = (best / N) | 0; estMarker.position.set(wx(bx), H[best] + 6, wz(bz)); estMarker.visible = true;
+  const ox = origin % N, oz = (origin / N) | 0, err = Math.hypot(bx - ox, bz - oz) * CS * MPU;
+  document.getElementById('cTrue').checked = true; trueOrigin.visible = true; traced = true;
+  const el = document.getElementById('trace'); el.style.display = 'block';
+  el.innerHTML = `<div><span>Detections used</span><b>${det.length} from ${passes.length} passes</b></div>
+    <div><span>Estimated ignition</span><b>T${mean[best] >= 0 ? '+' : '−'}${Math.abs(mean[best]).toFixed(2)} h</b></div>
+    <div><span>Origin zone</span><b>${(n * CELL_HA).toFixed(0)} ha</b></div>
+    <div><span>Distance to true origin</span><b style="color:${err < 600 ? '#5fd38a' : '#f2a03d'}">${Math.round(err)} m</b></div>
+    <div style="border:0;color:#8e96a8;font-size:11px;padding-top:6px">Cyan cone: best estimate. Cyan cells: zone where the spread model fits the hot spots almost as well. White beacon: true origin.</div>`;
+}
+
+// ---------------- per-frame drawing ----------------
+const RAMP = [[1, .95, .55], [1, .6, .15], [.9, .25, .15], [.55, .1, .35], [.22, .08, .35]];
+function ramp(x) { x = clamp(x, 0, 1) * (RAMP.length - 1); const i = Math.min(RAMP.length - 2, Math.floor(x)), f = x - i;
+  return RAMP[i].map((v, k) => v + (RAMP[i + 1][k] - v) * f); }
+function draw(clock) {
+  const ep = embers.geometry.attributes.position, ec = embers.geometry.attributes.color;
+  let ne = 0, burned = 0, cx = 0, cz = 0;
+  for (let i = 0; i < N * N; i++) {
+    const a = ARR[i], o = i * 3; let r = BASEC[o], g = BASEC[o + 1], b = BASEC[o + 2];
+    if (mode === 'arr') {
+      if (a <= T_MAX) { [r, g, b] = ramp(a / T_MAX); const fr = a % 1; if (fr < 0.07) { r = g = b = 0.95; } }
+      else { r *= .45; g *= .45; b *= .45; }
+      if (a <= t) burned++;
+    } else if (t >= a) {
+      burned++;
+      if (t < a + BURN) {
+        const p = (t - a) / BURN; r = 1; g = 0.85 - 0.75 * p; b = 0.35 * (1 - p);
+        const ix = i % N, iz = (i / N) | 0, fl = Math.sin(clock * 9 + i * 1.7);
+        const inten = (1 - p * 0.7) * Math.min(1, 0.4 + F[i]);
+        ep.setXYZ(ne, wx(ix) + fl * 0.35, H[i] + 0.8 + inten * (1.6 + fl * 0.6), wz(iz) + Math.cos(clock * 7 + i) * 0.35);
+        ec.setXYZ(ne, inten, inten * (0.55 - 0.35 * p), inten * 0.12); ne++; cx += wx(ix); cz += wz(iz);
+      } else { const k = clamp((t - a - BURN) / 1.5, 0, 1); r = 0.3 - 0.23 * k; g = 0.08 - 0.015 * k; b = 0.04 + 0.02 * k; }
+    }
+    COL[o] = r; COL[o + 1] = g; COL[o + 2] = b;
+  }
+  geo.attributes.color.needsUpdate = true;
+  embers.geometry.setDrawRange(0, ne); ep.needsUpdate = ec.needsUpdate = true;
+  if (ne) { fireLight.position.set(cx / ne, 18, cz / ne); fireLight.intensity = Math.min(3.2, Math.sqrt(ne) * 0.18) * (0.9 + 0.1 * Math.sin(clock * 13)); }
+  else fireLight.intensity = 0;
+  // show the two most recent satellite passes, like a live hot-spot feed
+  const h0 = hot.findIndex(h => h.t > t - 3), h1 = hot.filter(h => h.t <= t).length;
+  hotPts.geometry.setDrawRange(Math.max(0, h0), document.getElementById('cHot').checked && h0 >= 0 ? Math.max(0, h1 - h0) : 0);
+  let hit = 0;
+  for (const b of buildings) {
+    const m = b.mesh.material;
+    if (t >= b.arr) { hit++; const s = t - b.arr; m.emissive.setRGB(1, .35, .08); m.emissiveIntensity = s < BURN * 2 ? 0.55 + 0.35 * Math.sin(clock * 10 + b.ix) : 0.12; }
+    else m.emissiveIntensity = 0;
+  }
+  document.getElementById('sArea').textContent = Math.round(burned * CELL_HA).toLocaleString();
+  document.getElementById('sFront').textContent = ne.toLocaleString();
+  document.getElementById('sBld').textContent = hit + ' / ' + buildings.length;
+  document.getElementById('clock').textContent = 'T+' + t.toFixed(1).padStart(4, '0') + ' h';
+}
+
+// ---------------- side panels ----------------
+const fmtArr = a => a <= T_MAX ? 'T+' + a.toFixed(1) + ' h' : 'not in 12 h';
+function renderRanking() {
+  const el = document.getElementById('ranking');
+  el.innerHTML = [...buildings].sort((a, b) => b.score - a.score).slice(0, 12).map(b => {
+    const c = '#' + scoreColor(b.score).getHexString();
+    return `<div class="rank ${selected === b ? 'sel' : ''}" data-id="${b.id}"><span class="sc" style="background:${c}">${b.score}</span>
+      <span class="nm"><b>${b.id}</b> · ${b.type}<small>Fire arrives ${fmtArr(b.arr)}</small></span></div>`; }).join('');
+  el.querySelectorAll('.rank').forEach(r => r.onclick = () => select(buildings.find(b => b.id === r.dataset.id), true));
+}
+function renderCard(b) {
+  const c = '#' + scoreColor(b.score).getHexString(), acts = [];
+  if (b.clear < 30) acts.push(`Clear vegetation out to 30 m (now ${b.clear} m); hardscape the first 1.5 m.`);
+  if (b.roof.r >= .5) acts.push(`Replace ${b.roof.n.toLowerCase()} roof with a Class A assembly.`);
+  if (b.vents > 2) acts.push(`Fit 3 mm ember mesh on ${b.vents} open vents.`);
+  if (b.glazing === 'Single-pane') acts.push('Upgrade single-pane glazing on the fire-facing side.');
+  if (!acts.length) acts.push('Maintain current clearance; re-inspect before fire season.');
+  const el = document.getElementById('card'); el.style.display = 'block';
+  el.innerHTML = `<h3>${b.id} · ${b.type}</h3><div class="meta">Built ${b.year} · ${b.sqft.toLocaleString()} sq ft · est. $${b.value}M${b.wui ? ' · wildland edge' : ''}</div>
+    <div style="display:flex;justify-content:space-between"><span>Exposure score</span><b>${b.score}/100</b></div>
+    <div class="scorebar"><i style="width:${b.score}%;background:${c}"></i></div>
+    <div class="find"><span class="tag t-sim">FIRE</span><span>Arrival ${fmtArr(b.arr)} under ${windSpeed} mph wind</span></div>
+    <div class="find"><span class="tag t-vex">VEXCEL</span><span>${b.roof.n} roof; vegetation contact ${Math.round(b.veg * 100)}%; ${b.clear} m clearance</span></div>
+    <div class="find"><span class="tag t-mp">MATTERPORT</span><span>${b.vents} unscreened vents; ${b.glazing.toLowerCase()} glazing</span></div>
+    <div class="find"><span class="tag t-cs">COSTAR</span><span>${b.type}, ${b.year}, ${b.sqft.toLocaleString()} sq ft</span></div>
+    <div style="margin-top:8px;font-weight:600">Work order</div><ul class="act">${acts.map(a => `<li>${a}</li>`).join('')}</ul>`;
+}
+function select(b, fly) {
+  selected = b; renderRanking();
+  if (!b) { document.getElementById('card').style.display = 'none'; selRing.visible = false; return; }
+  renderCard(b); selRing.visible = true; selRing.position.set(b.mesh.position.x, H[b.i] + 0.3, b.mesh.position.z);
+  if (fly) flyTo = new THREE.Vector3(b.mesh.position.x, H[b.i], b.mesh.position.z);
+}
+
+// ---------------- interaction ----------------
+const $ = id => document.getElementById(id);
+let picking = false;
+$('pick').onclick = () => { picking = !picking; $('pick').classList.toggle('on', picking); app.classList.toggle('picking', picking); $('hint').style.display = picking ? 'block' : 'none'; };
+$('bt').onclick = backTrace;
+$('mFire').onclick = () => { mode = 'fire'; $('mFire').classList.add('on'); $('mArr').classList.remove('on'); $('legend').style.display = 'none'; };
+$('mArr').onclick = () => { mode = 'arr'; $('mArr').classList.add('on'); $('mFire').classList.remove('on'); $('legend').style.display = 'block'; };
+$('cBld').onchange = e => buildings.forEach(b => b.mesh.visible = e.target.checked);
+$('cTrue').onchange = e => trueOrigin.visible = e.target.checked;
+const dirName = d => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(d / 45) % 8];
+function windLabels() { $('wsL').textContent = windSpeed + ' mph'; $('wdL').textContent = dirName(windFrom) + ' (' + windFrom + '°)'; }
+let pend = false;
+function windInput() { windSpeed = +$('ws').value; windFrom = +$('wd').value; windLabels();
+  if (!pend) { pend = true; requestAnimationFrame(() => { pend = false; rerun(); }); } }
+$('ws').oninput = windInput; $('wd').oninput = windInput;
+$('time').oninput = e => { t = +e.target.value; };
+const setPlay = p => { playing = p; $('play').textContent = p ? '❚❚' : '▶'; };
+$('play').onclick = () => { if (!playing && t >= T_MAX) t = 0; setPlay(!playing); };
+addEventListener('keydown', e => { if (e.code === 'Space' && e.target.tagName !== 'INPUT') { e.preventDefault(); $('play').click(); } });
+
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(); let down = null;
+renderer.domElement.addEventListener('pointerdown', e => down = [e.clientX, e.clientY]);
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
+  mouse.set(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1); ray.setFromCamera(mouse, camera);
+  if (picking) { const hit = ray.intersectObject(terrain)[0]; if (!hit) return;
+    const ix = clamp(Math.round((hit.point.x + SIZE / 2) / CS), 0, N - 1), iz = clamp(Math.round((hit.point.z + SIZE / 2) / CS), 0, N - 1);
+    origin = iz * N + ix; $('pick').click(); rerun(); t = 0; setPlay(true); return; }
+  const hits = ray.intersectObjects(buildings.filter(b => b.mesh.visible).map(b => b.mesh));
+  select(hits.length ? hits[0].object.userData.b : null, false);
+});
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+// ---------------- loop ----------------
+windLabels(); rerun();
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (playing) { t += dt * +$('spd').value; if (t >= T_MAX) { t = T_MAX; setPlay(false); } $('time').value = t; }
+  if (flyTo) { controls.target.lerp(flyTo, 0.08); if (controls.target.distanceTo(flyTo) < 0.3) flyTo = null; }
+  estMarker.position.y += Math.sin(now / 300) * 0.02; selRing.rotation.z += 0.01;
+  controls.update(); draw(now / 1000); renderer.render(scene, camera); requestAnimationFrame(loop);
+}
+setPlay(true); requestAnimationFrame(loop);
+</script>
+</body>
+</html>

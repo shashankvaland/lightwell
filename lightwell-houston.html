@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lightwell Houston</title>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<style>
+  :root{--bg:#0b111d;--panel:rgba(13,19,32,.92);--line:rgba(255,255,255,.09);--ink:#e9edf5;--muted:#8f9ab0;
+    --gold:#f5b942;--teal:#3cc6b4;--rose:#ef5d6f}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  #map{position:fixed;inset:0}
+  aside{position:fixed;top:14px;bottom:14px;width:316px;background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:12px;padding:16px;overflow-y:auto;z-index:2}
+  #left{left:14px} #right{right:14px}
+  h1{font-size:20px;margin:0;display:flex;align-items:center;gap:8px}
+  h1 i{width:14px;height:14px;border-radius:3px;background:linear-gradient(135deg,var(--gold),#fff3c4);box-shadow:0 0 14px var(--gold)}
+  .sub{color:var(--muted);margin:3px 0 12px}
+  h2{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--gold);margin:16px 0 8px}
+  .note{font-size:11.5px;color:var(--muted);background:rgba(255,255,255,.04);border-left:2px solid var(--gold);padding:7px 9px;border-radius:4px}
+  .note.sim{border-color:#9a7bd1}
+  textarea{width:100%;height:58px;resize:none;font:inherit;color:var(--ink);background:#141c2d;border:1px solid var(--line);border-radius:8px;padding:8px}
+  button{font:inherit;color:var(--ink);background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:7px;padding:7px 10px;cursor:pointer}
+  button:hover{background:rgba(255,255,255,.12)}
+  button.primary{background:var(--gold);border-color:var(--gold);color:#1a1405;font-weight:700}
+  button.on{background:rgba(245,185,66,.18);border-color:var(--gold)}
+  button:disabled{opacity:.5;cursor:default}
+  .btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.btns button{flex:1}
+  label.row{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-top:6px}
+  label.row b{color:var(--ink)}
+  input[type=range]{width:100%;accent-color:var(--gold)}
+  .chk{display:flex;gap:7px;align-items:center;margin-top:8px;font-size:12.5px}
+  #log{margin-top:10px;font-size:12px}
+  .step{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);animation:fade .35s ease}
+  .step .who{font-size:9.5px;font-weight:800;padding:2px 6px;border-radius:4px;height:fit-content;white-space:nowrap;color:#0b111d}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
+  .kpis{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+  .kpi{background:rgba(255,255,255,.04);border-radius:8px;padding:8px}
+  .kpi b{display:block;font-size:17px}.kpi span{color:var(--muted);font-size:10.5px}
+  .rank{display:flex;gap:8px;align-items:center;padding:7px 6px;border-radius:7px;cursor:pointer}
+  .rank:hover,.rank.sel{background:rgba(255,255,255,.07)}
+  .rank .sc{width:34px;text-align:center;font-weight:800;border-radius:5px;padding:2px 0;color:#0b111d}
+  .rank .nm{flex:1;min-width:0}.rank .nm small{display:block;color:var(--muted)}
+  .flag{color:var(--rose);font-weight:800}
+  #card{display:none;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:8px}
+  #card h3{margin:0;font-size:15px}#card .meta{color:var(--muted);font-size:11.5px;margin:2px 0 8px}
+  .bar{height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;margin:4px 0 10px}.bar i{display:block;height:100%}
+  .find{font-size:12px;margin:6px 0;display:flex;gap:6px}
+  .tag{font-size:9.5px;font-weight:800;padding:1px 5px;border-radius:3px;height:fit-content;white-space:nowrap}
+  .t-osm{background:#2f7f86}.t-sim{background:#6b4fa3}.t-est{background:#5b6477}.t-fz{background:#9a6a12}.t-fx{background:#a3283a}
+  .big{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}
+  .big div{background:rgba(245,185,66,.08);border:1px solid rgba(245,185,66,.25);border-radius:8px;padding:7px}
+  .big b{display:block;font-size:16px;color:var(--gold)}.big span{font-size:10.5px;color:var(--muted)}
+  #plateBox{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);width:600px;max-width:calc(100vw - 680px);min-width:420px;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:none;z-index:2}
+  #plateBox header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  #plateBox canvas{width:100%;height:auto;display:block;margin-top:8px;border-radius:6px;background:#0e1524}
+  #plateStats{color:var(--muted);font-size:12px;margin-top:6px}#plateStats b{color:var(--ink)}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:6px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+  #modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:5}
+  #modal .box{width:min(640px,92vw);max-height:84vh;overflow:auto;background:#121a2b;border:1px solid var(--line);border-radius:12px;padding:18px}
+  #memo{white-space:pre-wrap;font:12.5px/1.55 ui-monospace,Consolas,monospace;background:#0c1322;border-radius:8px;padding:12px;border:1px solid var(--line)}
+  #toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:var(--gold);color:#1a1405;font-weight:700;padding:7px 14px;border-radius:20px;display:none;z-index:6}
+  @media (max-width:980px){aside{width:auto;left:8px!important;right:8px!important;top:auto;bottom:8px;max-height:44vh}
+    #right{display:none}#plateBox{max-width:none;min-width:0;width:calc(100vw - 16px);bottom:auto;top:8px}}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="toast"></div>
+
+<aside id="left">
+  <h1><i></i>Lightwell</h1>
+  <div class="sub">Downtown Houston: which offices can become homes?</div>
+  <div class="note"><b>Real:</b> building footprints and heights (OpenStreetMap).<br>
+    <b>Simulated:</b> occupancy, leases, age and aerial counts, until CoStar, Vexcel and Matterport data arrives. Real building names are hidden while simulated data is shown.</div>
+
+  <h2>Ask the agent</h2>
+  <textarea id="prompt">Find offices downtown I can turn into homes for under $300k a home.</textarea>
+  <div class="btns"><button id="run" class="primary" disabled>Loading map…</button></div>
+  <div id="log"></div>
+
+  <h2>Constraints (live)</h2>
+  <label class="row">Max distance to a window <b id="dL"></b></label>
+  <input id="dist" type="range" min="25" max="40" value="30">
+  <label class="row">Cost cap per home <b id="cL"></b></label>
+  <input id="cap" type="range" min="150" max="450" step="10" value="300">
+  <label class="chk"><input type="checkbox" id="lw" checked> Allow lightwell cuts</label>
+</aside>
+
+<aside id="right">
+  <div id="card"></div>
+  <h2 style="margin-top:0">Across downtown</h2>
+  <div class="kpis">
+    <div class="kpi"><b id="kCand">–</b><span>towers tested</span></div>
+    <div class="kpi"><b id="kHomes">–</b><span>homes possible</span></div>
+    <div class="kpi"><b id="kFlags">–</b><span>occupancy flags</span></div>
+  </div>
+  <h2>Best conversion candidates</h2>
+  <div id="ranking"><div class="note">Run the agent to rank downtown towers.</div></div>
+</aside>
+
+<div id="plateBox">
+  <header><b id="plateTitle">Typical floor</b>
+    <div style="display:flex;gap:6px"><button id="cut">Cut a lightwell</button><button id="closePlate">Close</button></div></header>
+  <canvas id="plate" width="1140" height="640"></canvas>
+  <div class="legend"><span><i style="background:#f5b942"></i>Daylit (homes)</span><span><i style="background:#28304a"></i>Too dark for bedrooms</span>
+    <span><i style="background:#5b6477"></i>Core</span><span><i style="background:#2c8c88"></i>Lightwell</span><span><i style="border:1px solid #fff"></i>Home</span></div>
+  <div id="plateStats"></div>
+</div>
+
+<div id="modal"><div class="box">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><b>Owner memo, drafted by the agent</b>
+    <div style="display:flex;gap:6px"><button id="copy">Copy</button><button id="dl">Download .md</button><button id="mClose">Close</button></div></div>
+  <div id="memo"></div>
+</div></div>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<!-- data as a script so the page also works when opened straight from disk (file://) -->
+<script src="data/houston_downtown.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const fmt = n => Math.round(n).toLocaleString(), money = n => '$' + Math.round(n / 1000) + 'k', pct = x => Math.round(x * 100) + '%';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// planning assumptions (estimates, shown as such)
+const A = { costPerSqft: 255, abatement: 20, lightwellPerSqft: 420, newBuildPerHome: 400000, carbonKgPerM2: 500, reuseSaving: 0.6, f2fMin: 12.5 };
+const S = { u: 30, cap: 300000, allowLW: true, scored: false, flagsShown: false };
+
+// ---------- feasibility engine (same as the prototype) ----------
+function layout(W, D, u, lw) {
+  const units = [], cores = []; let court = null;
+  const strip = (x0, y0, x1, y1, hor) => {
+    const len = hor ? x1 - x0 : y1 - y0, dep = hor ? y1 - y0 : x1 - x0; if (len < 14 || dep < 14) return;
+    const PAT = [22, 30, 36, 30], n = Math.max(1, Math.round(len / 29.5));
+    const raw = Array.from({ length: n }, (_, i) => PAT[i % PAT.length]), k = len / raw.reduce((s, x) => s + x, 0); let p = 0;
+    for (const rw of raw) { const w = rw * k, rr = hor ? [x0 + p, y0, x0 + p + w, y1] : [x0, y0 + p, x1, y0 + p + w]; p += w;
+      const a = w * dep; units.push({ r: rr, a, t: a < 700 ? 0 : a < 980 ? 1 : 2 }); } };
+  if (lw) { const wing = 2 * u + 6; court = [wing, wing, W - wing, D - wing]; }
+  const uy = Math.min(u, D / 2), ux = Math.min(u, W / 2);
+  strip(0, 0, W, uy, true); strip(0, D - uy, W, D, true);
+  if (D - 2 * uy > 14) { strip(0, uy, ux, D - uy, false); strip(W - ux, uy, W, D - uy, false); }
+  if (court) { const [a, b, c, d] = court;
+    strip(a - u, b - u, c + u, b, true); strip(a - u, d, c + u, d + u, true); strip(a - u, b, a, d, false); strip(c, b, c + u, d, false);
+    cores.push([a, b, a + 26, b + 26], [c - 26, d - 26, c, d]);
+  } else { const cw = Math.max(40, Math.round(W * 0.26 / 10) * 10), cd = Math.max(30, Math.round(D * 0.2 / 10) * 10);
+    cores.push([(W - cw) / 2, (D - cd) / 2, (W + cw) / 2, (D + cd) / 2]); }
+  return { units, court, cores };
+}
+const area = r => (r[2] - r[0]) * (r[3] - r[1]);
+const courtOK = (b, u) => { const wing = 2 * u + 6; return b.W - 2 * wing >= 30 && b.D - 2 * wing >= 30; };
+function plan(b, u, lw) {
+  const L = layout(b.W, b.D, u, lw), fu = b.floors - 1, perFloor = L.units.length, homes = perFloor * fu;
+  const daylit = L.units.reduce((s, x) => s + x.a, 0), coreA = L.cores.reduce((s, c) => s + area(c), 0);
+  const courtA = L.court ? area(L.court) - coreA : 0, net = b.W * b.D - (L.court ? area(L.court) : coreA), gsf = (b.W * b.D - courtA) * fu;
+  const cost = gsf * A.costPerSqft + (b.year < 1980 ? gsf * A.abatement : 0) + (lw ? courtA * fu * A.lightwellPerSqft : 0);
+  return { L, lw, perFloor, homes, daylitFrac: clamp(daylit / net, 0, 1), gsf, cost, cpu: homes ? cost / homes : Infinity,
+    mix: [0, 1, 2].map(t => L.units.filter(x => x.t === t).length * fu), carbon: gsf * 0.0929 * A.carbonKgPerM2 * A.reuseSaving / 1000 };
+}
+function analyze(b) {
+  const p0 = plan(b, S.u, false), ok = courtOK(b, S.u), p1 = ok ? plan(b, S.u, true) : null; let p = p0;
+  if (b.forceLW === true && p1) p = p1; else if (b.forceLW === null && S.allowLW && p1 && p1.cpu < p0.cpu) p = p1;
+  b.alt = p === p0 ? p1 : p0; b.plan = p; b.courtOK = ok;
+  const obsAvg = b.obs.reduce((s, x) => s + x, 0) / 3, vac = 1 - (0.35 * b.rep + 0.65 * obsAvg);
+  const costScore = clamp(1 - (p.cpu - 0.6 * S.cap) / (0.8 * S.cap), 0, 1);
+  const ageFit = b.year < 1960 ? .6 : b.year <= 1995 ? 1 : b.year <= 2008 ? .6 : .25;
+  b.vac = vac; b.score = Math.round(100 * (0.32 * p.daylitFrac + 0.28 * vac + 0.22 * costScore + 0.08 * (b.f2f >= A.f2fMin ? 1 : .4) + 0.10 * ageFit));
+  b.pass = p.cpu <= S.cap && p.homes >= 20; b.phantom = b.rep - Math.max(...b.obs) >= 0.45;
+}
+
+// ---------- real footprints -> candidate towers ----------
+const LAT0 = 29.7575, LON0 = -95.3665, FT = 3.281;
+const toFt = ([x, y]) => [(x - LON0) * Math.cos(LAT0 * Math.PI / 180) * 111320 * FT, (y - LAT0) * 110540 * FT];
+function polyArea(pts) { let s = 0; for (let i = 0; i < pts.length - 1; i++) s += pts[i][0] * pts[i + 1][1] - pts[i + 1][0] * pts[i][1]; return Math.abs(s) / 2; }
+function minRect(pts) { let best = null;
+  for (let a = 0; a < 90; a++) { const t = a * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (const [x, y] of pts) { const u = x * c + y * s, v = -x * s + y * c; x0 = Math.min(x0, u); x1 = Math.max(x1, u); y0 = Math.min(y0, v); y1 = Math.max(y1, v); }
+    const w = x1 - x0, d = y1 - y0; if (!best || w * d < best.a) best = { a: w * d, W: Math.max(w, d), D: Math.min(w, d) }; }
+  return best; }
+const SKIP = /stadium|park|arena|garage|parking|church|cathedral|hotel|apartment|residen|court|jail|theat|hall|center$/i;
+let B = [];
+function buildCandidates(gj) {
+  const ok = new Set(['office', 'commercial', 'tower', 'yes']);
+  for (const f of gj.features) {
+    const p = f.properties; if (p.heightSource === 'default' || p.height < 40 || !ok.has(p.kind)) continue;
+    if (p.name && SKIP.test(p.name) && !/energy center|plaza|tower/i.test(p.name)) continue;
+    const pts = f.geometry.coordinates[0].map(toFt), r = minRect(pts), fa = polyArea(pts);
+    if (fa > 70000 || r.D < 55) continue;
+    const i = B.length, rnd = mulberry(p.id % 100000 + 7);
+    const floors = p.levels && p.levels !== 'null' ? +p.levels : Math.round(p.height / 3.9);
+    const year = Math.round(1965 + rnd() * 50);
+    let rep = 0.55 + rnd() * 0.4, base = rep * (0.5 + rnd() * 0.5);
+    if (rnd() < 0.1) { rep = 0.84 + rnd() * 0.08; base = 0.09; }
+    const c = f.geometry.coordinates[0].reduce((s, q) => [s[0] + q[0], s[1] + q[1]], [0, 0]).map(v => v / f.geometry.coordinates[0].length);
+    B.push({ idx: i, osmId: p.id, id: 'HOU-' + String(i + 1).padStart(2, '0'), realName: p.name, heightM: p.height, heightSrc: p.heightSource,
+      W: Math.min(300, 10 * Math.round(r.W / 10)), D: Math.min(260, 10 * Math.round(r.D / 10)), irregular: fa / r.a < 0.8, footprint: Math.round(fa),
+      floors, f2f: Math.round((p.height * FT / floors) * 2) / 2, year, rep, obs: [0, 1, 2].map(() => clamp(base + (rnd() - .5) * 0.12, .03, .97)),
+      scanned: rnd() < 0.62, forceLW: null, center: c });
+  }
+}
+
+// ---------- map ----------
+const map = new maplibregl.Map({ container: 'map', style: 'https://tiles.openfreemap.org/styles/dark',
+  center: [-95.3665, 29.7575], zoom: 15.2, pitch: 58, bearing: -28, antialias: true });
+map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+const C = { poor: [58, 71, 102], mid: [60, 198, 180], top: [245, 185, 66] };
+const lerp = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+const scoreRGB = s => s < 45 ? lerp(C.poor, C.mid, s / 45) : lerp(C.mid, C.top, (s - 45) / 55);
+const hex = rgb => '#' + rgb.map(v => v.toString(16).padStart(2, '0')).join('');
+let gjData = null;
+// start as soon as the style is ready (don't wait for every basemap tile)
+map.once('style.load', async () => {
+  try { gjData = window.HOUSTON_GEOJSON || await (await fetch('data/houston_downtown.geojson')).json(); }
+  catch (e) { $('run').textContent = 'Building data not found'; return; }
+  buildCandidates(gjData);
+  const candIds = new Set(B.map(b => b.osmId));
+  gjData.features.forEach(f => { f.properties.cand = candIds.has(f.properties.id); f.id = f.properties.id; });
+  map.getStyle().layers.filter(l => l.type === 'fill-extrusion').forEach(l => map.setLayoutProperty(l.id, 'visibility', 'none'));
+  map.addSource('bld', { type: 'geojson', data: gjData, promoteId: 'id' });
+  map.addLayer({ id: 'bld', type: 'fill-extrusion', source: 'bld', paint: {
+    'fill-extrusion-color': ['case', ['boolean', ['feature-state', 'sel'], false], '#ffffff',
+      ['to-color', ['coalesce', ['feature-state', 'color'], ['case', ['get', 'cand'], '#4a5a80', '#232c40']]]],
+    'fill-extrusion-height': ['get', 'height'], 'fill-extrusion-opacity': 0.93 } });
+  map.addSource('flags', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  map.addLayer({ id: 'flags', type: 'circle', source: 'flags', paint: { 'circle-radius': 9, 'circle-color': '#ef5d6f', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
+  map.on('click', 'bld', e => { const b = B.find(x => x.osmId === e.features[0].properties.id); select(b || null, false); });
+  map.on('mouseenter', 'bld', () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', 'bld', () => map.getCanvas().style.cursor = '');
+  $('kCand').textContent = B.length; $('run').disabled = false; $('run').textContent = 'Run agent';
+});
+function color(b) { map.setFeatureState({ source: 'bld', id: b.osmId }, { color: hex(scoreRGB(b.score)) }); }
+function updateFlags() {
+  map.getSource('flags').setData({ type: 'FeatureCollection', features: S.flagsShown ? B.filter(b => b.phantom).map(b =>
+    ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: b.center } })) : [] });
+}
+
+// ---------- panels ----------
+let selected = null;
+function totals() { const pass = B.filter(b => b.pass);
+  $('kHomes').textContent = fmt(pass.reduce((s, b) => s + b.plan.homes, 0)); $('kFlags').textContent = B.filter(b => b.phantom).length; }
+function renderRanking() { if (!S.scored) return;
+  const list = [...B].sort((a, b) => (b.pass - a.pass) || (b.score - a.score)).slice(0, 12);
+  $('ranking').innerHTML = list.map(b => `<div class="rank ${selected === b ? 'sel' : ''}" data-i="${b.idx}">
+    <span class="sc" style="background:${hex(scoreRGB(b.score))}">${b.score}</span>
+    <span class="nm"><b>${b.id}</b> · ${b.floors} floors ${b.phantom ? '<span class="flag">⚑</span>' : ''}
+    <small>${b.pass ? fmt(b.plan.homes) + ' homes · ' + money(b.plan.cpu) + '/home' : 'Over cap · ' + money(b.plan.cpu) + '/home'}${b.plan.lw ? ' · lightwell' : ''}</small></span></div>`).join('');
+  $('ranking').querySelectorAll('.rank').forEach(el => el.onclick = () => select(B[+el.dataset.i], true));
+}
+const tagged = (t, c, x) => `<div class="find"><span class="tag ${c}">${t}</span><span>${x}</span></div>`;
+function renderCard(b) {
+  const p = b.plan, col = hex(scoreRGB(b.score)); $('card').style.display = 'block';
+  $('card').innerHTML = `<h3>${b.id} · downtown Houston</h3>
+    <div class="meta">Real footprint and height · market data simulated</div>
+    <div style="display:flex;justify-content:space-between"><span>Conversion score</span><b>${b.score}/100</b></div>
+    <div class="bar"><i style="width:${b.score}%;background:${col}"></i></div>
+    <div class="big"><div><b>${fmt(p.homes)}</b><span>homes (${p.mix[0]} studio · ${p.mix[1]} 1-bed · ${p.mix[2]} 2-bed)</span></div>
+      <div><b>${money(p.cpu)}</b><span>per home vs ~${money(A.newBuildPerHome)} new build</span></div>
+      <div><b>${pct(p.daylitFrac)}</b><span>of each floor within ${S.u} ft of a window</span></div>
+      <div><b>${fmt(p.carbon)} t</b><span>CO₂e embodied carbon avoided</span></div></div>
+    ${tagged('OSM', 't-osm', `Height ${b.heightM} m · ${b.floors} floors${b.heightSrc === 'osm-levels' ? ' (from floor count)' : ''}`)}
+    ${tagged(b.irregular ? 'ESTIMATE' : 'OSM', b.irregular ? 't-est' : 't-osm', `Floor plate about ${b.W} × ${b.D} ft from the real footprint${b.irregular ? ' (irregular shape, simplified)' : ''}`)}
+    ${tagged('SIMULATED', 't-sim', `CoStar stand-in: ${pct(b.rep)} leased, built ${b.year}`)}
+    ${tagged('SIMULATED', 't-sim', `Vexcel stand-in: parking ${b.obs.map(pct).join(' / ')} full`)}
+    ${tagged('FEASIBILITY', 't-fz', p.lw ? `Lightwell cut: ${p.perFloor} homes per floor` : `${p.perFloor} homes per floor along the window walls`)}
+    ${b.phantom ? tagged('FLAG', 't-fx', `Simulated example of a hidden-vacancy flag: reported ${pct(b.rep)} leased, parking never above ${pct(Math.max(...b.obs))}.`) : ''}
+    <div class="btns"><button id="showPlate">Show floor plate</button><button id="approve" class="primary">Approve &amp; draft memo</button></div>`;
+  $('showPlate').onclick = () => openPlate(b); $('approve').onclick = () => openMemo(b);
+}
+function select(b, fly) {
+  if (selected) map.setFeatureState({ source: 'bld', id: selected.osmId }, { sel: false });
+  selected = b; renderRanking();
+  if (!b) { $('card').style.display = 'none'; $('plateBox').style.display = 'none'; return; }
+  if (b.score == null) analyze(b);
+  map.setFeatureState({ source: 'bld', id: b.osmId }, { sel: true });
+  renderCard(b); if ($('plateBox').style.display === 'block') openPlate(b);
+  if (fly) map.flyTo({ center: b.center, zoom: 16.6, pitch: 62, bearing: map.getBearing() + 25, speed: 0.8 });
+}
+function openPlate(b) {
+  $('plateBox').style.display = 'block'; const p = b.plan;
+  $('plateTitle').textContent = `${b.id} · typical floor (${b.W} × ${b.D} ft)`;
+  $('cut').disabled = !b.courtOK; $('cut').classList.toggle('on', p.lw);
+  $('cut').textContent = !b.courtOK ? 'Too small for a lightwell' : p.lw ? 'Remove lightwell' : 'Cut a lightwell';
+  const cv = $('plate'), g = cv.getContext('2d'), Wc = cv.width, Hc = cv.height, pad = 40; g.clearRect(0, 0, Wc, Hc);
+  const sc = Math.min((Wc - 2 * pad) / b.W, (Hc - 2 * pad - 30) / b.D), ox = (Wc - b.W * sc) / 2, oy = pad, L = p.L, u = S.u, step = 2.5;
+  const inR = (x, y, r) => x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3];
+  for (let y = 0; y < b.D; y += step) for (let x = 0; x < b.W; x += step) {
+    const cx = x + step / 2, cy = y + step / 2; if (L.court && inR(cx, cy, L.court)) continue;
+    let d = Math.min(cx, b.W - cx, cy, b.D - cy);
+    if (L.court) { const r = L.court; d = Math.min(d, Math.hypot(Math.max(r[0] - cx, 0, cx - r[2]), Math.max(r[1] - cy, 0, cy - r[3]))); }
+    if (d <= u) { const t = d / u; g.fillStyle = `rgb(${245 - t * 60 | 0},${200 - t * 70 | 0},${110 - t * 60 | 0})`; }
+    else g.fillStyle = ((x / step + y / step) % 4 === 0) ? '#323a57' : '#28304a';
+    g.fillRect(ox + x * sc, oy + y * sc, step * sc + .6, step * sc + .6);
+  }
+  if (L.court) { const r = L.court; g.fillStyle = '#2c8c88'; g.fillRect(ox + r[0] * sc, oy + r[1] * sc, (r[2] - r[0]) * sc, (r[3] - r[1]) * sc);
+    g.fillStyle = '#d9fffb'; g.font = 'bold 20px system-ui'; g.textAlign = 'center'; g.fillText('LIGHTWELL', ox + (r[0] + r[2]) / 2 * sc, oy + (r[1] + r[3]) / 2 * sc + 7); }
+  for (const c of L.cores) { g.fillStyle = '#5b6477'; g.fillRect(ox + c[0] * sc, oy + c[1] * sc, (c[2] - c[0]) * sc, (c[3] - c[1]) * sc);
+    g.fillStyle = '#e9edf5'; g.font = 'bold 16px system-ui'; g.textAlign = 'center'; g.fillText('CORE', ox + (c[0] + c[2]) / 2 * sc, oy + (c[1] + c[3]) / 2 * sc + 6); }
+  const tc = ['rgba(60,198,180,.25)', 'rgba(127,184,255,.22)', 'rgba(186,140,255,.25)'];
+  for (const un of L.units) { const r = un.r; g.fillStyle = tc[un.t]; g.fillRect(ox + r[0] * sc, oy + r[1] * sc, (r[2] - r[0]) * sc, (r[3] - r[1]) * sc);
+    g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 2; g.strokeRect(ox + r[0] * sc + 1, oy + r[1] * sc + 1, (r[2] - r[0]) * sc - 2, (r[3] - r[1]) * sc - 2); }
+  g.strokeStyle = '#e9edf5'; g.lineWidth = 3; g.strokeRect(ox, oy, b.W * sc, b.D * sc);
+  g.fillStyle = '#8f9ab0'; g.fillRect(ox, oy + b.D * sc + 18, 50 * sc, 4); g.font = '16px system-ui'; g.textAlign = 'left'; g.fillText('50 ft', ox + 50 * sc + 8, oy + b.D * sc + 25);
+  const a = b.alt;
+  $('plateStats').innerHTML = `<b>${pct(p.daylitFrac)}</b> daylit · <b>${p.perFloor}</b> homes per floor · <b>${fmt(p.homes)}</b> homes · <b>${money(p.cpu)}</b> per home` +
+    (a ? ` &nbsp;|&nbsp; ${a.lw ? 'With' : 'Without'} lightwell: ${fmt(a.homes)} homes at ${money(a.cpu)}` : '');
+}
+$('cut').onclick = () => { if (!selected) return; selected.forceLW = !selected.plan.lw; analyze(selected); if (S.scored) color(selected);
+  renderCard(selected); openPlate(selected); renderRanking(); totals(); };
+$('closePlate').onclick = () => $('plateBox').style.display = 'none';
+let memoText = '';
+function openMemo(b) { const p = b.plan;
+  memoText = `# Conversion screen: ${b.id}, downtown Houston
+
+**${fmt(p.homes)} homes could fit in this tower.** (Demo memo: market figures are simulated.)
+
+## What we found
+- **Building (OpenStreetMap):** ${b.heightM} m tall, ${b.floors} floors, floor plate about ${b.W} x ${b.D} ft.
+- **Market (simulated stand-in for CoStar):** ${pct(b.rep)} leased, built ${b.year}.
+- **Aerial (simulated stand-in for Vexcel):** parking ${b.obs.map(pct).join(', ')} full across three captures.
+- **Daylight test:** ${pct(p.daylitFrac)} of each floor is within ${S.u} ft of a window.${p.lw ? ' A lightwell cut brings light to the core.' : ''}
+
+## Proposal
+- ${fmt(p.homes)} homes: ${p.mix[0]} studios, ${p.mix[1]} one-beds, ${p.mix[2]} two-beds (${p.perFloor} per floor; ground floor kept as lobby and retail).
+- Estimated ${money(p.cpu)} per home, against roughly ${money(A.newBuildPerHome)} for new construction.
+- About ${fmt(p.carbon)} t CO2e of embodied carbon avoided.
+
+_Planning estimates generated by Lightwell. Replace simulated figures with CoStar, Vexcel and Matterport data before any decision._
+`;
+  $('memo').textContent = memoText; $('modal').style.display = 'flex'; }
+$('mClose').onclick = () => $('modal').style.display = 'none';
+$('copy').onclick = async () => { try { await navigator.clipboard.writeText(memoText); toast('Memo copied'); } catch { toast('Copy failed: select the text instead'); } };
+$('dl').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([memoText], { type: 'text/markdown' }));
+  a.download = (selected ? selected.id : 'memo') + '-conversion-memo.md'; a.click(); };
+function toast(t) { $('toast').textContent = t; $('toast').style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => $('toast').style.display = 'none', 1800); }
+
+// ---------- agent run ----------
+const WHO = { Planner: '#f5b942', Map: '#57c3bd', CoStar: '#b48ae0', Vexcel: '#57c3bd', Feasibility: '#e0b35a', Forensics: '#ef8796' };
+function log(who, text) { const d = document.createElement('div'); d.className = 'step';
+  d.innerHTML = `<span class="who" style="background:${WHO[who]}">${who.toUpperCase()}</span><span>${text}</span>`; $('log').appendChild(d); d.scrollIntoView({ block: 'nearest' }); }
+let running = false;
+async function runAgent() {
+  if (running || !B.length) return; running = true; $('run').disabled = true; $('log').innerHTML = '';
+  const m = $('prompt').value.match(/\$\s?(\d{2,3})\s?k/i); if (m) { $('cap').value = m[1]; labels(); }
+  S.scored = false; S.flagsShown = false; updateFlags(); B.forEach(b => map.removeFeatureState({ source: 'bld', id: b.osmId }, 'color'));
+  log('Planner', `Goal: downtown offices that can become homes for under ${money(S.cap)} each. Plan: map → market → aerial → feasibility → forensics → memo.`); await sleep(800);
+  log('Map', `Loaded ${fmt(gjData.features.length)} real building footprints. Kept ${B.length} towers 40 m+ with usable floor plates.`);
+  map.easeTo({ zoom: 14.8, pitch: 55, bearing: map.getBearing() - 20, duration: 1500 }); await sleep(1200);
+  log('CoStar', `<i>Simulated:</i> occupancy, lease and age records attached to each tower.`); await sleep(800);
+  log('Vexcel', `<i>Simulated:</i> car counts for three aerial captures.`); await sleep(800);
+  B.forEach(analyze); S.scored = true;
+  for (const b of [...B].sort((a, b) => a.score - b.score)) { color(b); await sleep(25); }
+  const pass = B.filter(b => b.pass);
+  log('Feasibility', `Ran the ${S.u} ft daylight test on every real floor plate. ${pass.length} towers work under the cap; lightwells rescue ${pass.filter(b => b.plan.lw).length}.`);
+  totals(); renderRanking(); await sleep(900);
+  S.flagsShown = true; updateFlags();
+  log('Forensics', `${B.filter(b => b.phantom).length} simulated hidden-vacancy flags (red dots), to show how real flags will appear.`); await sleep(900);
+  const best = [...pass].sort((a, b) => b.score - a.score)[0];
+  if (best) { log('Planner', `Top pick: ${best.id}, ${fmt(best.plan.homes)} homes at ${money(best.plan.cpu)} each. Memo drafted for approval.`); select(best, true); openPlate(best); }
+  else log('Planner', 'Nothing passes under this cap. Raise it or allow lightwell cuts.');
+  running = false; $('run').disabled = false;
+}
+$('run').onclick = runAgent;
+function labels() { S.u = +$('dist').value; S.cap = +$('cap').value * 1000; $('dL').textContent = S.u + ' ft'; $('cL').textContent = money(S.cap); }
+function recompute() { labels(); S.allowLW = $('lw').checked; if (!S.scored) return; B.forEach(b => { analyze(b); color(b); }); updateFlags(); totals(); renderRanking();
+  if (selected) { renderCard(selected); if ($('plateBox').style.display === 'block') openPlate(selected); } }
+['dist', 'cap'].forEach(id => $(id).oninput = recompute); $('lw').onchange = recompute;
+labels();
+</script>
+</body>
+</html>

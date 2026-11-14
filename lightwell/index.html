@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lightwell</title>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<link href="css/app.css" rel="stylesheet">
+</head>
+<body>
+<div id="map"></div>
+<div id="g3d" style="visibility:hidden"></div>
+<div id="views"><button data-v="map" class="on">Map</button><button data-v="g3d">Photoreal 3D</button></div>
+<div id="viewNote"></div>
+<div id="toast"></div>
+
+<aside id="left">
+  <h1><i></i>Lightwell</h1>
+  <div class="sub">Downtown Houston: which offices can become homes?</div>
+  <div class="note" id="dataNote"><b>Real:</b> building footprints and heights (OpenStreetMap).<br>
+    <b>Simulated:</b> occupancy, leases, age and aerial counts until CoStar, Vexcel and Matterport data arrives. Real building names stay hidden while data is simulated.</div>
+
+  <h2>Ask the agent</h2>
+  <textarea id="prompt">Find offices downtown I can turn into homes for under $300k a home.</textarea>
+  <div class="btns"><button id="run" class="primary" disabled>Loading…</button></div>
+  <div id="mode" class="mode">Checking for the agent backend…</div>
+  <div id="log"></div>
+
+  <h2>Constraints (live)</h2>
+  <label class="row">Max distance to a window <b id="dL"></b></label>
+  <input id="dist" type="range" min="25" max="40" value="30">
+  <label class="row">Cost cap per home <b id="cL"></b></label>
+  <input id="cap" type="range" min="150" max="450" step="10" value="300">
+  <label class="chk"><input type="checkbox" id="lw" checked> Allow lightwell cuts</label>
+
+  <details><summary>Assumptions (estimates)</summary><div id="assume"></div>
+    <div class="note" style="margin-top:8px">Change any number and every tower re-scores. Replace with a real cost model before any decision.</div></details>
+</aside>
+
+<aside id="right">
+  <div id="card"></div>
+  <h2 style="margin-top:0">Across downtown</h2>
+  <div class="kpis">
+    <div class="kpi"><b id="kCand">–</b><span>real towers tested</span></div>
+    <div class="kpi"><b id="kHomes">–</b><span>homes possible</span></div>
+    <div class="kpi"><b id="kCo2">–</b><span>t CO₂e avoided</span></div>
+    <div class="kpi"><b id="kFlags">–</b><span>occupancy flags</span></div>
+  </div>
+  <div id="exports" class="btns"><button id="portfolio">Portfolio memo</button><button id="csv">Export CSV</button></div>
+  <h2>Best conversion candidates</h2>
+  <div id="ranking"><div class="note">Run the agent to rank downtown towers.</div></div>
+</aside>
+
+<div id="plateBox">
+  <header><b id="plateTitle">Typical floor</b>
+    <div style="display:flex;gap:6px"><button id="cut">Cut a lightwell</button><button id="closePlate">Close</button></div></header>
+  <canvas id="plate" width="1140" height="640"></canvas>
+  <div class="legend"><span><i style="background:#f5b942"></i>Daylit (homes)</span><span><i style="background:#28304a"></i>Too dark for bedrooms</span>
+    <span><i style="background:#5b6477"></i>Core + stairs</span><span><i style="background:#2c8c88"></i>Lightwell</span><span><i style="border:1px solid #fff"></i>Home</span>
+    <label class="chk" style="margin:0"><input type="checkbox" id="showRoute" checked> Farthest home → stair</label></div>
+  <div id="plateStats"></div>
+</div>
+
+<div id="modal"><div class="box">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><b id="memoTitle">Memo</b>
+    <div style="display:flex;gap:6px"><button id="copy">Copy</button><button id="dl">Download .md</button><button id="mClose">Close</button></div></div>
+  <div id="memo"></div>
+</div></div>
+
+<script src="config.js"></script>
+<script src="data/houston_downtown.js"></script>
+<!-- real data from backend/import_data.py; the page works without it -->
+<script src="data/real_overlay.js" onerror="this.remove()"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/data.js"></script>
+<script src="js/views.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/agent.js"></script>
+<script>LW.start();</script>
+</body>
+</html>

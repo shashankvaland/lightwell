@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+# for the Claude agent (optional: without these, or without ANTHROPIC_API_KEY, the fixed plan runs)
+deepagents
+langchain-anthropic
+# for backend/count_cars.py (Claude vision car counts)
+anthropic

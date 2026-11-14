@@ -1,0 +1,14 @@
+# Your keys live here; the committed template is lightwell/config.example.js
+lightwell/config.js
+.env
+*.env
+
+# Real CoStar / Vexcel / Matterport data is licensed to you: keep it out of the repo
+real-data/*.csv
+lightwell/data/real_overlay.js
+lightwell/data/real_overlay.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
