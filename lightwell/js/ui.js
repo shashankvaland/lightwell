@@ -92,9 +92,8 @@
       ${b.phantom ? tag('FLAG', 't-fx', (b.real.market && b.real.aerial)
         ? `Signal to verify, not a finding: reported ${pct(LW.eff(b, 'rep'))} leased, but parking never above ${pct(Math.max(...b.obs))} across ${b.obs.length} captures. Garages or transit can explain this.`
         : `Hidden-vacancy example: reported ${pct(LW.eff(b, 'rep'))} leased, parking never above ${pct(Math.max(...b.obs))}.`) : ''}
-      <div class="btns"><button id="orbit">Drone orbit</button><button id="street">Street level</button>
-        <a class="btnlink" target="_blank" rel="noopener" title="Opens Google Street View at this tower"
-           href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${b.center[1].toFixed(6)},${b.center[0].toFixed(6)}">Street View ↗</a></div>
+      <div class="btns"><button id="orbit">Drone orbit</button><button id="street">3D street level</button>
+        <button id="sview" class="sv">Street View</button></div>
       <div class="btns"><button id="showPlate">Floor plate</button><button id="fix">Correct data</button></div>
       <div id="fixForm" style="display:none">
         <label class="row">Leased (%) <input id="fRep" type="number" min="0" max="100" value="${Math.round(LW.eff(b, 'rep') * 100)}"></label>
@@ -105,6 +104,7 @@
       <div class="btns"><button id="approve" class="primary wide">Approve &amp; draft memo</button></div>`;
     $('showPlate').onclick = () => openPlate(b); $('approve').onclick = () => openMemo(b);
     $('orbit').onclick = () => { $('plateBox').style.display = 'none'; LW.view.orbit(b); };
+    $('sview').onclick = () => LW.streetView.open(b);
     // street level needs a true 3D scene, so it switches to the Photoreal 3D view first
     $('street').onclick = async () => { $('plateBox').style.display = 'none'; if (!LW.view.canStreet) await LW.switchView('g3d'); if (LW.view.canStreet) LW.view.street(b); };
     $('fix').onclick = () => { const f = $('fixForm'); f.style.display = f.style.display === 'none' ? 'block' : 'none'; };

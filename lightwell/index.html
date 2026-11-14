@@ -61,6 +61,13 @@
   <div id="plateStats"></div>
 </div>
 
+<div id="svBox">
+  <header><div><b id="svTitle">Street View</b><small id="svDist"></small></div>
+    <div style="display:flex;gap:6px"><button id="svFace">Face the tower</button><button id="svClose">Close</button></div></header>
+  <div id="pano"></div>
+  <div id="svMsg"></div>
+</div>
+
 <div id="modal"><div class="box">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><b id="memoTitle">Memo</b>
     <div style="display:flex;gap:6px"><button id="copy">Copy</button><button id="dl">Download .md</button><button id="mClose">Close</button></div></div>
@@ -77,6 +84,7 @@
 <script src="js/views.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/agent.js"></script>
+<script src="js/streetview.js"></script>
 <script>LW.start();</script>
 </body>
 </html>

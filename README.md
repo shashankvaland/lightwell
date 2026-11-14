@@ -62,6 +62,10 @@ Copy `lightwell/config.example.js` to `lightwell/config.js`, then add **one** of
 - `CESIUM_ION_TOKEN`: free Cesium ion account, no card needed. Serves Google Photorealistic 3D Tiles.
 - `GOOGLE_MAPS_API_KEY`: Google Maps Platform key with the **Map Tiles API** enabled.
 
+**In-app Street View** (the Street View button on each tower) also uses `GOOGLE_MAPS_API_KEY`: enable the
+**Maps JavaScript API** on the same key. It zooms down to the tower and opens Google's street photos inside the page,
+facing the building. Without the key it offers the 3D street-level view instead.
+
 `config.js` is git-ignored, so keys never reach the repo. Without a key, the Photoreal button shows the OSM
 buildings in 3D.
 

@@ -71,5 +71,18 @@ details{margin-top:14px}summary{cursor:pointer;color:var(--gold);font-size:10.5p
 @media (max-width:980px){aside{width:auto;left:8px!important;right:8px!important;top:auto;bottom:8px;max-height:44vh}
   #right{display:none}#plateBox{max-width:none;min-width:0;width:calc(100vw - 16px);bottom:auto;top:56px}}
 .realdot{color:var(--gold);font-size:10px}
-.btnlink{flex:1;text-align:center;color:var(--ink);background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:7px;padding:7px 10px;text-decoration:none}
-.btnlink:hover{background:rgba(255,255,255,.12)}
+
+/* In-app Street View: opens with a zoom-in from the map, like stepping down into the street */
+button.sv{background:rgba(60,198,180,.16);border-color:var(--teal)}
+#svBox{position:fixed;left:350px;right:350px;top:60px;bottom:14px;z-index:4;display:none;flex-direction:column;
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  opacity:0;transform:scale(.6);transform-origin:50% 60%;transition:opacity .25s ease,transform .35s cubic-bezier(.2,.8,.2,1)}
+#svBox.open{opacity:1;transform:none}
+#svBox header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px}
+#svBox header small{display:block;color:var(--muted);font-size:11.5px}
+#pano{flex:1;min-height:0;background:#0e1524}
+#svMsg{position:absolute;inset:58px 0 0 0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  text-align:center;padding:24px;color:var(--muted);background:#0e1524}
+#svMsg b{color:var(--ink);font-size:15px}#svMsg span{max-width:440px}
+#svMsg code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px}
+@media (max-width:980px){#svBox{left:8px;right:8px;top:56px;bottom:46vh}}
