@@ -29,6 +29,8 @@
 
   // Real data written by backend/import_data.py (lightwell/data/real_overlay.js), keyed by OSM id.
   LW.real = window.LIGHTWELL_REAL || null;
+  // Daylight X-ray profiles written by backend/daylight.py (lightwell/data/daylight.js), keyed by OSM id.
+  LW.daylightData = window.LIGHTWELL_DAYLIGHT || null;
   LW.dataMode = LW.real ? 'real' : 'demo';
 
   // Source of a field, with user corrections winning.
@@ -75,6 +77,8 @@
         ev: {},   // evidence records behind the values, for the evidence drawer
       };
       if (real) applyReal(b, real);
+      const day = LW.daylightData && LW.daylightData.buildings[String(p.id)];
+      b.day = day || null; b.src.daylight = day ? (Object.values(day.blk).some(x => x && x.src === 'ESTIMATE') ? 'ESTIMATE' : 'OSM') : 'MISSING';
       // floor-by-floor vacancy: CoStar's available-space floors when imported; simulated only on anonymous demo towers
       if (simulate) b.vacantFloors = simVacantFloors(b.floors, b.rep, mulberry(p.id % 100000 + 99));
       b.label = b.real.market ? b.name : b.id;   // real names only appear next to real market data

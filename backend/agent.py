@@ -20,15 +20,15 @@ from engine import (SAFE_LABEL, Building, LAYER_NAME, WHATIF, analyze, current_v
 
 MODEL = os.environ.get("LIGHTWELL_MODEL", "anthropic:claude-opus-5-5")
 ASK_TIMEOUT_S = int(os.environ.get("LIGHTWELL_ASK_TIMEOUT", "300"))
-FIELDS = ("id", "W", "D", "heightM", "floors", "f2f", "year", "rep", "obs", "scanned", "core", "forceLW", "real", "src", "vacantFloors", "center", "tenants")
-BRIEF_KEYS = ("u", "cap", "allowLW", "minHomes", "useParking", "require")
+FIELDS = ("id", "W", "D", "heightM", "floors", "f2f", "year", "rep", "obs", "scanned", "core", "forceLW", "real", "src", "vacantFloors", "center", "tenants", "day")
+BRIEF_KEYS = ("u", "cap", "allowLW", "minHomes", "useParking", "require", "neighbours", "dayLim", "dayStrict")
 
 
 class Session:
     def __init__(self, payload: dict):
         self.id = uuid.uuid4().hex[:12]
         self.S = {"u": 30, "cap": 300000, "allowLW": True, "minHomes": 20, "useParking": True, "require": [],
-                  **(payload.get("constraints") or {})}
+                  "neighbours": True, "dayLim": 25, "dayStrict": False, **(payload.get("constraints") or {})}
         self.A = payload.get("assumptions") or {}
         self.prompt = payload.get("prompt", "")
         self.key = payload.get("key")        # the browser's fingerprint of the inputs; echoed back with the result
@@ -85,6 +85,14 @@ def big_money(n):
     return "—" if n is None else (f"${jround(n / 1e5) / 10:g}M" if n >= 1e6 else f"${jround(n / 1000)}k")
 
 
+COMPASS = ("north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west")
+
+
+def compass_name(deg):
+    """Compass word for a bearing in degrees (0 = north), e.g. 305 -> 'north-west'. Mirrors LW.compass in engine.js."""
+    return COMPASS[jround(deg / 45) % 8] if deg is not None else "unknown"
+
+
 def money(n):
     return "—" if n is None else f"${jround(n / 1000)}k"
 
@@ -104,10 +112,13 @@ def make_tools(s: Session):
 
     def update_brief(max_cost_per_home: int | None = None, min_homes: int | None = None, window_ft: int | None = None,
                      allow_lightwell: bool | None = None, use_parking: bool | None = None,
-                     require_real: list[str] | None = None, reason: str = "") -> str:
+                     require_real: list[str] | None = None, strict_daylight: bool | None = None,
+                     daylight_limit_deg: int | None = None, reason: str = "") -> str:
         """Change the screening brief when the user's request (or a later instruction) asks for it. Only pass what changes.
         max_cost_per_home: 100000-600000. min_homes: 1-5000. window_ft: 20-45. require_real: any of 'market', 'aerial', 'interior'.
-        use_parking=False ignores aerial parking evidence in scoring and flags. Always give a short reason quoting the user."""
+        use_parking=False ignores aerial parking evidence in scoring and flags. strict_daylight=True stops counting homes whose
+        windows face a nearby building (otherwise they only lower the daylight score). daylight_limit_deg: 20-35.
+        Always give a short reason quoting the user."""
         new, errors = dict(s.S), []
         if max_cost_per_home is not None:
             (new.__setitem__("cap", int(max_cost_per_home)) if 100000 <= max_cost_per_home <= 600000 else errors.append("cap out of range"))
@@ -117,6 +128,10 @@ def make_tools(s: Session):
             (new.__setitem__("u", int(window_ft)) if 20 <= window_ft <= 45 else errors.append("window_ft out of range"))
         if allow_lightwell is not None:
             new["allowLW"] = bool(allow_lightwell)
+        if strict_daylight is not None:
+            new["dayStrict"] = bool(strict_daylight)
+        if daylight_limit_deg is not None:
+            (new.__setitem__("dayLim", int(daylight_limit_deg)) if 20 <= daylight_limit_deg <= 35 else errors.append("daylight_limit_deg out of range"))
         if use_parking is not None:
             new["useParking"] = bool(use_parking)
         if require_real is not None:
@@ -183,6 +198,38 @@ def make_tools(s: Session):
         s.emit("Safety", f"{b.id}: preliminary fire screen: {label}; farthest home about {jround(sf['travel'])} ft from a stair."
                + (f" {sf['notes'][0]}." if sf["notes"] else ""), ids=[b.id])
         return json.dumps({"status": sf["status"], "farthest_home_ft": jround(sf["travel"]), "notes": sf["notes"], "assumed": sf["assumed"]})
+
+    def check_daylight(tower_ids: list[str]) -> str:
+        """Daylight X-ray for each tower: how many homes have windows facing a nearby building (obstruction angle above the
+        brief's limit, default 25 degrees), which walls and floors, and the main blocking building. A screening check, not
+        a daylight study. In strict mode those homes are not counted."""
+        out = {}
+        for t in tower_ids:
+            b = s.get(t)
+            d = b.plan.get("day")
+            if not d:
+                out[t] = {"checked": False, "why": "no neighbour data for this tower" if s.S.get("neighbours", True) else "switched off in the brief"}
+                continue
+            walls = []
+            for k, w in sorted(d["walls"].items(), key=lambda kv: -kv[1]["homes"]):
+                blk = (b.day.get("blk") or {}).get(k) if k != "court" else None
+                walls.append({"wall": k, "faces_deg": (b.day.get("face") or {}).get(k), "floors": f"{w['from']}-{w['to']}",
+                              "dim_homes": w["homes"], "blocker_osm": blk and blk["osm"], "blocker_height_m": blk and blk["h"],
+                              "blocker_distance_ft": blk and blk["d"], "height_source": blk and blk["src"]})
+            out[t] = {"checked": True, "limit_deg": d["lim"], "strict": d["strict"], "dim_homes": d["dim"],
+                      "homes_checked": d["open"] + d["dim"], "walls": walls}
+        checked = [t for t in tower_ids if out[t]["checked"]]
+        worst = max(checked, key=lambda t: out[t]["dim_homes"] / max(1, out[t]["homes_checked"]), default=None)
+        if worst:
+            w = out[worst]
+            first = w["walls"][0] if w["walls"] else None
+            s.emit("Daylight", f"Checked {len(checked)} towers against their neighbours (limit {w['limit_deg']}°). "
+                   f"{worst}: {w['dim_homes']} of {w['homes_checked']} homes face a nearby building"
+                   + (f", mostly the {'lightwell court' if first['wall'] == 'court' else compass_name(first['faces_deg']) + '-facing wall'} on floors {first['floors']}" if first else "")
+                   + (". Strict mode: those homes are not counted." if w["strict"] else "; they lower the daylight score."), ids=[worst])
+        else:
+            s.emit("Daylight", "No neighbour data for these towers (run backend/daylight.py), so daylight uses the window-distance test only.")
+        return json.dumps(out)
 
     def find_occupancy_mismatches() -> str:
         """Towers whose reported occupancy is far above what aerial parking counts show: observations to investigate, not findings."""
@@ -333,7 +380,7 @@ def make_tools(s: Session):
 
     return dict(list_towers=list_towers, get_brief=get_brief, update_brief=update_brief, get_market_records=get_market_records,
                 count_parking=count_parking, read_floor_plates=read_floor_plates, rank_towers=rank_towers,
-                test_conversion=test_conversion, check_fire_safety=check_fire_safety,
+                test_conversion=test_conversion, check_fire_safety=check_fire_safety, check_daylight=check_daylight,
                 find_occupancy_mismatches=find_occupancy_mismatches, review_evidence=review_evidence,
                 request_measurement=request_measurement, draft_owner_memo=draft_owner_memo,
                 check_texas_fast_track=check_texas_fast_track, list_tenants=list_tenants,
@@ -350,7 +397,7 @@ reflect (a home count, ignoring parking, requiring real data, a cost cap, no lig
 Then, keeping every step short:
 1. list_towers.
 2. market-analyst: market records and parking counts for all towers, and any occupancy discrepancies.
-3. feasibility-engineer: rank the towers, then test conversion and the fire screen for the top 3.
+3. feasibility-engineer: rank the towers, then test conversion, the fire screen and check_daylight for the top 3.
 4. policy-analyst: Texas fast-track status for the top 5 passing towers.
 5. Review: call review_evidence on the top 3 passing towers. If a gap is decision-relevant for the leader, call
    request_measurement for it (one sentence why). After the answer, call rank_towers again and explain how the ranking
@@ -362,7 +409,9 @@ Then, keeping every step short:
 8. draft_owner_memo for your single best passing tower, with a two-sentence rationale that names the move plan.
 Finish with two sentences: the pick and why. Values tagged SIMULATED, ESTIMATE, ASSUMED or MISSING are not measured:
 say so when you rely on them. Occupancy discrepancies are observations to investigate, never accusations.
-The fire screen is preliminary; never call a tower fire-safe. The fast-track screen is not legal advice."""
+The fire screen is preliminary; never call a tower fire-safe. The fast-track screen is not legal advice.
+Daylight X-ray is a screening check against neighbouring buildings, not a daylight study; never call a tower
+daylight-compliant."""
 
 
 def run_llm(s: Session):
@@ -372,9 +421,9 @@ def run_llm(s: Session):
     market = {"name": "market-analyst", "description": "Pulls CoStar market records and Vexcel parking counts; finds occupancy discrepancies.",
               "system_prompt": "Use your tools on the tower ids you are given. Return a short factual summary with source tags.",
               "tools": [t["get_market_records"], t["count_parking"], t["find_occupancy_mismatches"]]}
-    feas = {"name": "feasibility-engineer", "description": "Reads floor plates, ranks towers, tests conversion and the preliminary fire screen.",
-            "system_prompt": "Use rank_towers first, then test_conversion and check_fire_safety on the towers you are asked about. Be brief.",
-            "tools": [t["read_floor_plates"], t["rank_towers"], t["test_conversion"], t["check_fire_safety"]]}
+    feas = {"name": "feasibility-engineer", "description": "Reads floor plates, ranks towers, tests conversion, the preliminary fire screen and daylight from neighbours.",
+            "system_prompt": "Use rank_towers first, then test_conversion, check_fire_safety and check_daylight on the towers you are asked about. Be brief.",
+            "tools": [t["read_floor_plates"], t["rank_towers"], t["test_conversion"], t["check_fire_safety"], t["check_daylight"]]}
     policy = {"name": "policy-analyst", "description": "Screens towers against the Texas SB 840 / SB 2477 conversion fast-track (age, 65% residential).",
               "system_prompt": "Call check_texas_fast_track on the towers you are given. Report which are ready, which need how many "
                                "floors freed, and any missing year built. Say it is a screen, not legal advice.",
@@ -430,6 +479,8 @@ def run_scripted(s: Session):
     for row in top:
         t["test_conversion"](row["id"])
         t["check_fire_safety"](row["id"])
+    if top:
+        t["check_daylight"]([r["id"] for r in top])
     t["find_occupancy_mismatches"]()
     if top:
         gaps = json.loads(t["review_evidence"]([r["id"] for r in top]))

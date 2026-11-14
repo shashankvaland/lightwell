@@ -180,7 +180,7 @@
     return { prompt: $('prompt').value, constraints: { ...LW.S }, assumptions: { ...LW.A }, key: LW.inputsKey(),
       buildings: LW.B.map(b => ({ id: b.id, W: b.W, D: b.D, heightM: b.heightM, floors: LW.eff(b, 'floors'), f2f: LW.eff(b, 'f2f'),
         year: LW.eff(b, 'year'), rep: LW.eff(b, 'rep'), obs: b.obs || [], scanned: b.scanned, core: LW.eff(b, 'core'),
-        forceLW: b.forceLW, real: b.real, vacantFloors: b.vacantFloors || [], center: b.center, tenants: Array.isArray(b.tenants) ? b.tenants : null, src: Object.fromEntries(f.map(k => [k, LW.srcOf(b, k)])) })) };
+        forceLW: b.forceLW, real: b.real, vacantFloors: b.vacantFloors || [], center: b.center, tenants: Array.isArray(b.tenants) ? b.tenants : null, src: Object.fromEntries(f.map(k => [k, LW.srcOf(b, k)])), day: b.day })) };
   }
   async function runBackend() {
     const url = backendUrl();

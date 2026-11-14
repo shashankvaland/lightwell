@@ -5,7 +5,7 @@ import fs from 'node:fs'; import vm from 'node:vm'; import path from 'node:path'
 const root = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
 const ctx = { window: {}, console, Math, JSON, Set, Map, Array, Object, String, Number, Infinity, isFinite };
 ctx.window.window = ctx.window; vm.createContext(ctx);
-for (const f of ['lightwell/js/engine.js', 'lightwell/js/data.js', 'lightwell/js/shuffle.js']) vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f });
+for (const f of ['lightwell/data/daylight.js', 'lightwell/js/engine.js', 'lightwell/js/data.js', 'lightwell/js/shuffle.js']) vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f });
 const LW = ctx.window.LW;
 const gj = JSON.parse(fs.readFileSync(path.join(root, 'lightwell/data/houston_downtown.geojson'), 'utf8'));
 const B = LW.buildCandidates(gj, 'demo');
@@ -14,6 +14,9 @@ const scenarios = [
   { S: { u: 25, cap: 250000, allowLW: true, minHomes: 200, useParking: false, require: [] } },
   { S: { u: 40, cap: 400000, allowLW: false, minHomes: 20, useParking: true, require: [] } },
   { S: { u: 35, cap: 320000, allowLW: true, minHomes: 20, useParking: true, require: [] }, forceLW: true, core: true, missing: true },
+  // Daylight X-ray: strict mode with a looser limit, and the check switched off
+  { S: { u: 30, cap: 300000, allowLW: true, minHomes: 20, useParking: true, require: [], neighbours: true, dayLim: 30, dayStrict: true } },
+  { S: { u: 30, cap: 300000, allowLW: true, minHomes: 20, useParking: true, require: [], neighbours: false } },
 ];
 const out = [];
 for (const sc of scenarios) {
@@ -27,7 +30,7 @@ for (const sc of scenarios) {
     LW.analyze(b);
     const L = b.plan.L, issues = LW.checkLayout(L, b.W, b.D);
     rows.push({ input: { id: b.id, W: b.W, D: b.D, heightM: b.heightM, floors: b.floors, f2f: b.f2f, year: b.year, rep: b.rep,
-      obs: b.obs, scanned: b.scanned, core: b.core, forceLW: b.forceLW, real: b.real, vacantFloors: b.vacantFloors, center: b.center,
+      obs: b.obs, scanned: b.scanned, core: b.core, forceLW: b.forceLW, real: b.real, vacantFloors: b.vacantFloors, center: b.center, day: b.day,
       src: { vacant: LW.srcOf(b, 'vacant') } }, summary: LW.summary(b), issues,
       courtOK: b.courtOK, altIssues: b.alt ? LW.checkLayout(b.alt.L, b.W, b.D) : [] });
     copies.push(b);

@@ -24,7 +24,8 @@
     buyoutSqftYr: 30,        // early lease exit: rent concession, $ per sq ft per year left after next year
   };
   // The brief: live constraints from the request and the sliders.
-  LW.S = { u: 30, cap: 300000, allowLW: true, minHomes: 20, useParking: true, require: [] };
+  // neighbours / dayLim / dayStrict: Daylight X-ray (see LW.wallAngle below).
+  LW.S = { u: 30, cap: 300000, allowLW: true, minHomes: 20, useParking: true, require: [], neighbours: true, dayLim: 25, dayStrict: false };
 
   // Layout constants
   const CORR = 5, MIN_DEPTH = 14, MIN_AREA = 300;
@@ -58,7 +59,7 @@
   // With a lightwell, the layout assumes two new stair cores at opposite inner corners of the courtyard ring.
   LW.layout = function (W, D, u, lw, core) {
     let units = [], cores = [], court = null, coreBasis;
-    const strip = (x0, y0, x1, y1, hor, win) => {
+    const strip = (x0, y0, x1, y1, hor, win, court) => {
       const len = hor ? x1 - x0 : y1 - y0, dep = hor ? y1 - y0 : x1 - x0;
       if (len < MIN_DEPTH || dep < MIN_DEPTH) return;
       const PAT = [22, 30, 36, 30], n = Math.max(1, Math.round(len / 29.5));
@@ -66,7 +67,7 @@
       const k = len / raw.reduce((s, x) => s + x, 0); let p = 0;
       for (const rw of raw) {
         const w = rw * k, rr = hor ? [x0 + p, y0, x0 + p + w, y1] : [x0, y0 + p, x1, y0 + p + w]; p += w;
-        units.push({ r: rr, win });
+        units.push({ r: rr, win, court: !!court });
       }
     };
     if (lw) {
@@ -87,8 +88,8 @@
     if (D - 2 * uy > MIN_DEPTH) { strip(0, uy, ux, D - uy, false, 'w'); strip(W - ux, uy, W, D - uy, false, 'e'); }
     if (court) {
       const [a, b, c, d] = court;   // inner ring; glass faces the courtyard
-      strip(a, b - u, c + u, b, true, 's'); strip(c, b, c + u, d, false, 'w');
-      strip(a - u, d, c, d + u, true, 'n'); strip(a - u, b, a, d, false, 'e');
+      strip(a, b - u, c + u, b, true, 's', true); strip(c, b, c + u, d, false, 'w', true);
+      strip(a - u, d, c, d + u, true, 'n', true); strip(a - u, b, a, d, false, 'e', true);
     }
     // Trim homes back from the cores: keep the glass side, cut the inner side to leave a corridor.
     const kept = [];
@@ -107,7 +108,7 @@
       if (!alive) continue;
       const dep = hor ? r[3] - r[1] : r[2] - r[0], a = area(r);
       if (dep < MIN_DEPTH || a < MIN_AREA) continue;
-      kept.push({ r, a, win: un.win, t: a < 700 ? 0 : a < 980 ? 1 : 2 });
+      kept.push({ r, a, win: un.win, court: un.court, t: a < 700 ? 0 : a < 980 ? 1 : 2 });
     }
     return { units: kept, court, cores, coreBasis };
   };
@@ -166,10 +167,46 @@
   };
   LW.SAFE_LABEL = { verify: 'No blocker found · needs verification', check: 'Design work likely', fail: 'Likely blocker' };
 
+  // ---- Daylight X-ray: does each window wall see the sky? ----
+  // Outside walls: obstruction-angle profile from backend/daylight.py (b.day, attached by data.js from
+  // window.LIGHTWELL_DAYLIGHT). Lightwell court walls: the tower itself, across the court.
+  // A screening rule (default 25 degrees, after UK BRE daylight guidance), not a daylight study.
+  LW.DAY = { eyeFt: 6.5, lim: 25 };
+  LW.compass = deg => deg == null ? 'unknown' : ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round(deg / 45) % 8];
+  const round1 = x => Math.round(x * 10) / 10;
+  LW.dayOn = b => LW.S.neighbours !== false && !!(b.day && b.day.prof);
+  LW.wallAngle = function (b, L, un, f, f2f, floors) {
+    const z = (f - 1) * f2f + LW.DAY.eyeFt;   // eye height on floor f (floor 1 = street level)
+    if (un.court) {
+      const c = L.court, across = un.win === 'n' || un.win === 's' ? c[3] - c[1] : c[2] - c[0];
+      return Math.max(0, round1(Math.atan2(floors * f2f - z, across) * 180 / Math.PI));
+    }
+    const prof = b.day.prof[un.win], i = Math.floor(z / (b.day.dz || 10));
+    return prof && prof.length ? prof[Math.max(0, Math.min(prof.length - 1, i))] : 0;
+  };
+  // Per floor: which homes see the sky. Returns null when the check is off or there is no data for this tower.
+  LW.daylight = function (b, L, floors, f2f) {
+    if (!LW.dayOn(b)) return null;
+    const lim = LW.S.dayLim != null ? LW.S.dayLim : LW.DAY.lim, walls = {}, byFloor = [], mix = [0, 0, 0];
+    let open = 0, openArea = 0, total = 0;
+    for (let f = 2; f <= floors; f++) {
+      let o = 0;
+      for (const un of L.units) {
+        total++;
+        if (LW.wallAngle(b, L, un, f, f2f, floors) <= lim) { o++; openArea += un.a; mix[un.t]++; continue; }
+        const k = un.court ? 'court' : un.win, w = walls[k] || (walls[k] = { from: f, to: f, homes: 0 });
+        w.to = f; w.homes++;
+      }
+      open += o; byFloor.push(o);
+    }
+    return { lim, strict: !!LW.S.dayStrict, open, dim: total - open, openArea, mix, byFloor, walls };
+  };
+
   LW.plan = function (b, u, lw) {
     const A = LW.A, L = LW.layout(b.W, b.D, u, lw, LW.eff(b, 'core')), floors = LW.eff(b, 'floors'), fu = floors - 1;
     const yearRaw = LW.eff(b, 'year'), year = yearRaw != null ? yearRaw : A.unknownYear;
-    const perFloor = L.units.length, homes = perFloor * fu;
+    const perFloor = L.units.length, day = LW.daylight(b, L, floors, LW.eff(b, 'f2f'));
+    const homes = day && day.strict ? day.open : perFloor * fu;
     const daylit = L.units.reduce((s, x) => s + x.a, 0);
     const courtA = L.court ? area(L.court) : 0, solidA = unionArea(L.court ? [...L.cores, L.court] : L.cores);
     const net = b.W * b.D - solidA, gsf = (b.W * b.D - courtA) * fu;
@@ -177,8 +214,10 @@
     const cost = gsf * A.costPerSqft + (year < 1980 ? gsf * A.abatement : 0) + (lw ? courtA * fu * A.lightwellPerSqft : 0)
       + (safe.retrofit ? gsf * A.sprinklerPerSqft : 0);
     return {
-      L, lw, perFloor, homes, daylitFrac: net > 0 ? clamp(daylit / net, 0, 1) : 0, gsf, cost, cpu: homes ? cost / homes : Infinity,
-      mix: [0, 1, 2].map(t => L.units.filter(x => x.t === t).length * fu), safety: safe,
+      L, lw, perFloor, homes, gsf, cost, cpu: homes ? cost / homes : Infinity, safety: safe, day,
+      // with Daylight X-ray on, only homes that see the sky count as daylit (and, in strict mode, as homes at all)
+      daylitFrac: net > 0 ? clamp(day ? (fu > 0 ? day.openArea / (net * fu) : 0) : daylit / net, 0, 1) : 0,
+      mix: day && day.strict ? day.mix : [0, 1, 2].map(t => L.units.filter(x => x.t === t).length * fu),
       carbon: gsf * 0.0929 * A.carbonKgPerM2 * A.reuseSaving / 1000,
     };
   };
@@ -227,6 +266,7 @@
       mix: { studio: p.mix[0], one_bed: p.mix[1], two_bed: p.mix[2] },
       fire_screen: s.status, farthest_home_ft: r(s.travel), stair_sep_ft: r(s.sep), fire_notes: s.notes,
       carbon_t: r(p.carbon), hidden_vacancy_flag: b.phantom, vacancy_basis: b.vacBasis, assumed: b.assumed,
+      dim_homes: p.day ? p.day.dim : null, daylight_rule_deg: p.day ? p.day.lim : null, daylight_strict: p.day ? p.day.strict : null,
     };
   };
 

@@ -131,3 +131,59 @@ def test_moves_free_enough_floors_and_never_target_self():
         assert all(m["to"] != b.id for m in p["moves"])
         if ft["status"] == "shuffle" and not p["unplaced"]:
             assert p["fast_track_after"] and ft["free"] + p["freed_floors"] >= ft["need"]
+
+
+# ---------------- Daylight X-ray ----------------
+def prof(e_deg=0.0, e_below_ft=0, others=0.0, top_ft=400, dz=10):
+    """Synthetic profile: the east wall sees e_deg below e_below_ft, open above; other walls see `others`."""
+    n = top_ft // dz + 1
+    east = [e_deg if i * dz < e_below_ft else 0.0 for i in range(n)]
+    return {"dz": dz, "prof": {"n": [others] * n, "s": [others] * n, "w": [others] * n, "e": east},
+            "face": {"n": 0, "s": 180, "e": 90, "w": 270}, "blk": {"n": None, "s": None, "w": None, "e": None}}
+
+
+def test_neighbour_dims_only_floors_below_its_roof():
+    # 25 floors at 13 ft: eye height on floor f = (f - 1) * 13 + 6.5. Below 100 ft is floors 2..8.
+    b = analyze(mk(day=prof(e_deg=40, e_below_ft=100)))
+    d = b.plan["day"]
+    assert set(d["walls"]) == {"e"} and d["walls"]["e"]["from"] == 2 and d["walls"]["e"]["to"] == 8
+    east_homes = sum(1 for u in b.plan["L"]["units"] if u["win"] == "e")
+    assert d["dim"] == east_homes * 7
+    assert b.plan["homes"] == len(b.plan["L"]["units"]) * 24            # score mode: homes still count
+    strict = analyze(mk(day=prof(e_deg=40, e_below_ft=100)), {"dayStrict": True})
+    assert strict.plan["homes"] == b.plan["homes"] - d["dim"]           # strict mode: dim homes drop out
+
+
+def test_limit_is_inclusive_and_adjustable():
+    b = analyze(mk(day=prof(e_deg=25, e_below_ft=1000)))
+    assert b.plan["day"]["dim"] == 0                                     # exactly at the limit counts as open
+    b = analyze(mk(day=prof(e_deg=25, e_below_ft=1000)), {"dayLim": 20})
+    assert b.plan["day"]["dim"] > 0
+
+
+def test_lightwell_court_is_dark_low_and_open_high():
+    b = analyze(mk(W=200, D=200, floors=30, f2f=13, forceLW=True, day=prof()))
+    w = b.plan["day"]["walls"]["court"]
+    assert b.plan["lw"] and w["from"] == 2 and w["to"] < 30              # top floors of the court see the sky
+
+
+def test_off_switch_and_missing_data_change_nothing():
+    on = summary(analyze(mk(day=prof(e_deg=60, e_below_ft=400))))
+    off = summary(analyze(mk(day=prof(e_deg=60, e_below_ft=400)), {"neighbours": False}))
+    none = summary(analyze(mk()))
+    assert off == none and off["dim_homes"] is None
+    assert on["dim_homes"] > 0 and on["daylit_pct"] < none["daylit_pct"]
+
+
+DAYLIGHT = ROOT / "lightwell" / "data" / "daylight.json"
+
+
+@pytest.mark.skipif(not DAYLIGHT.exists(), reason="run `python backend/daylight.py` first")
+def test_daylight_file_is_well_formed():
+    data = json.loads(DAYLIGHT.read_text())
+    assert data["version"] == 1 and data["buildings"]
+    for rec in data["buildings"].values():
+        assert set(rec["prof"]) == {"n", "s", "e", "w"} and rec["dz"] > 0
+        for k, p in rec["prof"].items():
+            assert p and all(0 <= a <= 90 for a in p), k
+            assert 0 <= rec["face"][k] < 360

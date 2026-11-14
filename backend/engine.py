@@ -13,10 +13,12 @@ DEFAULT_ASSUMPTIONS = {
     "newBuildPerHome": 400000, "carbonKgPerM2": 500, "reuseSaving": 0.6, "f2fMin": 12.5, "f2fHard": 10.5, "maxTravelFt": 250,
     "unknownVacancy": 0.25, "unknownYear": 1970, "moveCostSqft": 15, "buyoutSqftYr": 30,
 }
-DEFAULT_CONSTRAINTS = {"u": 30, "cap": 300000, "allowLW": True, "minHomes": 20, "useParking": True, "require": []}
+DEFAULT_CONSTRAINTS = {"u": 30, "cap": 300000, "allowLW": True, "minHomes": 20, "useParking": True, "require": [],
+                       "neighbours": True, "dayLim": 25, "dayStrict": False}   # last three: Daylight X-ray
 LAYER_NAME = {"market": "CoStar", "aerial": "Vexcel", "interior": "Matterport"}
 
 CORR, MIN_DEPTH, MIN_AREA = 5, 14, 300
+DAY = {"eyeFt": 6.5, "lim": 25}
 SAFE_LABEL = {"verify": "No blocker found, needs verification", "check": "Design work likely", "fail": "Likely blocker"}
 
 
@@ -90,12 +92,13 @@ class Building:
     vac_basis: str = ""
     assumed: list = field(default_factory=list)
     courtOK: bool = False
+    day: dict | None = None           # Daylight X-ray profile from lightwell/data/daylight.json (sent by the browser)
 
 
 def layout(W, D, u, lw, core=None):
     units, cores, court = [], [], None
 
-    def strip(x0, y0, x1, y1, hor, win):
+    def strip(x0, y0, x1, y1, hor, win, court=False):
         length = x1 - x0 if hor else y1 - y0
         dep = y1 - y0 if hor else x1 - x0
         if length < MIN_DEPTH or dep < MIN_DEPTH:
@@ -109,7 +112,7 @@ def layout(W, D, u, lw, core=None):
             w = rw * k
             rr = [x0 + p, y0, x0 + p + w, y1] if hor else [x0, y0 + p, x1, y0 + p + w]
             p += w
-            units.append({"r": rr, "win": win})
+            units.append({"r": rr, "win": win, "court": court})
 
     if lw:
         wing = 2 * u + 6
@@ -133,10 +136,10 @@ def layout(W, D, u, lw, core=None):
         strip(W - ux, uy, W, D - uy, False, "e")
     if court:
         a, b, c, d = court
-        strip(a, b - u, c + u, b, True, "s")
-        strip(c, b, c + u, d, False, "w")
-        strip(a - u, d, c, d + u, True, "n")
-        strip(a - u, b, a, d, False, "e")
+        strip(a, b - u, c + u, b, True, "s", True)
+        strip(c, b, c + u, d, False, "w", True)
+        strip(a - u, d, c, d + u, True, "n", True)
+        strip(a - u, b, a, d, False, "e", True)
 
     kept = []
     for un in units:
@@ -166,7 +169,7 @@ def layout(W, D, u, lw, core=None):
         a = area(r)
         if dep < MIN_DEPTH or a < MIN_AREA:
             continue
-        kept.append({"r": r, "a": a, "win": win, "t": 0 if a < 700 else 1 if a < 980 else 2})
+        kept.append({"r": r, "a": a, "win": win, "court": un["court"], "t": 0 if a < 700 else 1 if a < 980 else 2})
     return {"units": kept, "court": court, "cores": cores, "coreBasis": basis}
 
 
@@ -229,12 +232,55 @@ def safety(b: Building, L, A):
             + (["Core rectangle"] if L["coreBasis"] == "given" else [])}
 
 
-def plan(b: Building, u, lw, A):
+# ---- Daylight X-ray (mirrors LW.wallAngle / LW.daylight in engine.js) ----
+def day_on(b: Building, S) -> bool:
+    return S.get("neighbours", True) is not False and bool(b.day and b.day.get("prof"))
+
+
+def wall_angle(b: Building, L, un, f, f2f, floors):
+    z = (f - 1) * f2f + DAY["eyeFt"]
+    if un["court"]:
+        c = L["court"]
+        across = c[3] - c[1] if un["win"] in ("n", "s") else c[2] - c[0]
+        return max(0, jround(math.atan2(floors * f2f - z, across) * 180 / math.pi * 10) / 10)
+    prof = b.day["prof"].get(un["win"]) or []
+    i = math.floor(z / (b.day.get("dz") or 10))
+    return prof[max(0, min(len(prof) - 1, i))] if prof else 0
+
+
+def daylight(b: Building, L, floors, f2f, S):
+    if not day_on(b, S):
+        return None
+    lim = S["dayLim"] if S.get("dayLim") is not None else DAY["lim"]
+    walls, by_floor, mix = {}, [], [0, 0, 0]
+    opened = open_area = total = 0
+    for f in range(2, floors + 1):
+        o = 0
+        for un in L["units"]:
+            total += 1
+            if wall_angle(b, L, un, f, f2f, floors) <= lim:
+                o += 1
+                open_area += un["a"]
+                mix[un["t"]] += 1
+                continue
+            k = "court" if un["court"] else un["win"]
+            w = walls.setdefault(k, {"from": f, "to": f, "homes": 0})
+            w["to"] = f
+            w["homes"] += 1
+        opened += o
+        by_floor.append(o)
+    return {"lim": lim, "strict": bool(S.get("dayStrict")), "open": opened, "dim": total - opened, "openArea": open_area,
+            "mix": mix, "byFloor": by_floor, "walls": walls}
+
+
+def plan(b: Building, u, lw, A, S=None):
+    S = {**DEFAULT_CONSTRAINTS, **(S or {})}
     L = layout(b.W, b.D, u, lw, b.core)
     fu = b.floors - 1
     year = b.year if b.year is not None else A["unknownYear"]
     per_floor = len(L["units"])
-    homes = per_floor * fu
+    day = daylight(b, L, b.floors, b.f2f, S)
+    homes = day["open"] if day and day["strict"] else per_floor * fu
     daylit = sum(x["a"] for x in L["units"])
     court_a = area(L["court"]) if L["court"] else 0
     solid_a = union_area(L["cores"] + ([L["court"]] if L["court"] else []))
@@ -244,9 +290,10 @@ def plan(b: Building, u, lw, A):
     cost = (gsf * A["costPerSqft"] + (gsf * A["abatement"] if year < 1980 else 0)
             + (court_a * fu * A["lightwellPerSqft"] if lw else 0) + (gsf * A["sprinklerPerSqft"] if safe["retrofit"] else 0))
     return {
-        "L": L, "lw": lw, "perFloor": per_floor, "homes": homes, "daylitFrac": clamp(daylit / net, 0, 1) if net > 0 else 0,
+        "L": L, "lw": lw, "perFloor": per_floor, "homes": homes, "day": day,
+        "daylitFrac": clamp((day["openArea"] / (net * fu) if fu > 0 else 0) if day else daylit / net, 0, 1) if net > 0 else 0,
         "gsf": gsf, "cost": cost, "cpu": cost / homes if homes else math.inf,
-        "mix": [sum(1 for x in L["units"] if x["t"] == t) * fu for t in range(3)],
+        "mix": day["mix"] if day and day["strict"] else [sum(1 for x in L["units"] if x["t"] == t) * fu for t in range(3)],
         "safety": safe, "carbon": gsf * 0.0929 * A["carbonKgPerM2"] * A["reuseSaving"] / 1000,
     }
 
@@ -254,9 +301,9 @@ def plan(b: Building, u, lw, A):
 def analyze(b: Building, S=None, A=None) -> Building:
     S = {**DEFAULT_CONSTRAINTS, **(S or {})}
     A = {**DEFAULT_ASSUMPTIONS, **(A or {})}
-    p0 = plan(b, S["u"], False, A)
+    p0 = plan(b, S["u"], False, A, S)
     ok = court_ok(b, S["u"])
-    p1 = plan(b, S["u"], True, A) if ok else None
+    p1 = plan(b, S["u"], True, A, S) if ok else None
     p = p0
     if b.forceLW is True and p1:
         p = p1
@@ -312,6 +359,8 @@ def summary(b: Building) -> dict:
         "mix": {"studio": p["mix"][0], "one_bed": p["mix"][1], "two_bed": p["mix"][2]},
         "fire_screen": s["status"], "farthest_home_ft": jround(s["travel"]), "stair_sep_ft": jround(s["sep"]), "fire_notes": s["notes"],
         "carbon_t": jround(p["carbon"]), "hidden_vacancy_flag": b.phantom, "vacancy_basis": b.vac_basis, "assumed": b.assumed,
+        "dim_homes": p["day"]["dim"] if p["day"] else None, "daylight_rule_deg": p["day"]["lim"] if p["day"] else None,
+        "daylight_strict": p["day"]["strict"] if p["day"] else None,
     }
 
 
