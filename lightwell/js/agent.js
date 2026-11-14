@@ -59,10 +59,13 @@
       S.require = [...new Set([...S.require, ...(want.length ? want : ['market'])])];
       got.push('real ' + S.require.map(k => LAYERS[k]).join(' + ') + ' data required');
     }
+    if (/strict daylight|only homes that see the sky/i.test(txt)) { S.dayStrict = true; got.push('strict daylight: homes facing a nearby building not counted'); }
+    if (/ignore (the )?neighbou?rs/i.test(txt)) { S.neighbours = false; got.push('neighbouring buildings ignored for daylight'); }
     return { S, got };
   };
   LW.briefText = S => `≤ ${LW.money(S.cap)}/home · ${S.u} ft window rule · ${S.minHomes}+ homes · ${S.allowLW ? 'lightwells allowed' : 'no lightwells'}`
-    + `${S.useParking ? '' : ' · parking ignored'}${S.require.length ? ' · real ' + S.require.map(k => LAYERS[k]).join(' + ') + ' required' : ''}`;
+    + `${S.useParking ? '' : ' · parking ignored'}${S.require.length ? ' · real ' + S.require.map(k => LAYERS[k]).join(' + ') + ' required' : ''}`
+    + (S.neighbours === false ? ' · neighbours ignored' : ` · sky ≤ ${S.dayLim != null ? S.dayLim : LW.DAY.lim}°${S.dayStrict ? ' (strict)' : ''}`);
 
   // Fingerprint of everything that changes a result. A memo is only "reviewed" while this matches.
   LW.inputsKey = () => JSON.stringify({ S: LW.S, A: LW.A, mode: LW.dataMode,

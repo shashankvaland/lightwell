@@ -38,6 +38,10 @@
   <label class="row">Minimum homes per tower <input id="minHomes" type="number" min="1" max="5000" value="20"></label>
   <label class="chk"><input type="checkbox" id="lw" checked> Allow lightwell cuts</label>
   <label class="chk"><input type="checkbox" id="useParking" checked> Use parking evidence (Vexcel)</label>
+  <label class="chk"><input type="checkbox" id="dayOn" checked> Check daylight from neighbours</label>
+  <label class="row">Max sky blocked by neighbours <b id="dayL"></b></label>
+  <input id="dayLim" type="range" min="20" max="35" value="25">
+  <label class="chk"><input type="checkbox" id="dayStrict"> Strict daylight: don't count dim homes</label>
   <div id="require" class="chk req">Require real:
     <label><input type="checkbox" value="market"> CoStar</label><label><input type="checkbox" value="aerial"> Vexcel</label><label><input type="checkbox" value="interior"> Matterport</label></div>
 

@@ -429,16 +429,20 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
     LW.S = { ...LW.S, ...S, require: [...((S && S.require) || [])] };
     $('dist').value = LW.S.u; $('cap').value = Math.round(LW.S.cap / 1000); $('lw').checked = LW.S.allowLW;
     $('minHomes').value = LW.S.minHomes; $('useParking').checked = LW.S.useParking;
+    $('dayOn').checked = LW.S.neighbours !== false; $('dayLim').value = LW.S.dayLim; $('dayL').textContent = LW.S.dayLim + '°'; $('dayStrict').checked = !!LW.S.dayStrict;
     document.querySelectorAll('#require input').forEach(x => x.checked = LW.S.require.includes(x.value));
     $('dL').textContent = LW.S.u + ' ft'; $('cL').textContent = money(LW.S.cap); $('briefText').textContent = LW.briefText(LW.S);
   };
   function readBrief() {
     LW.setBrief({ u: +$('dist').value, cap: +$('cap').value * 1000, allowLW: $('lw').checked, minHomes: Math.max(1, Math.round(+$('minHomes').value || 1)),
-      useParking: $('useParking').checked, require: [...document.querySelectorAll('#require input:checked')].map(x => x.value) });
+      useParking: $('useParking').checked, require: [...document.querySelectorAll('#require input:checked')].map(x => x.value),
+      neighbours: $('dayOn').checked, dayLim: +$('dayLim').value, dayStrict: $('dayStrict').checked });
   }
   function recompute() { readBrief(); if (LW.scored) LW.analyzeAll(); }
   ['dist', 'cap', 'minHomes'].forEach(id => $(id).oninput = recompute);
   ['lw', 'useParking'].forEach(id => $(id).onchange = recompute);
+  $('dayLim').oninput = recompute;
+  ['dayOn', 'dayStrict'].forEach(id => $(id).onchange = recompute);
   document.querySelectorAll('#require input').forEach(x => x.onchange = recompute);
 
   const AS = [['costPerSqft', 'Conversion cost ($/sq ft)', 1], ['lightwellPerSqft', 'Lightwell cut ($/sq ft removed)', 1], ['sprinklerPerSqft', 'Sprinkler retrofit ($/sq ft)', 1],
