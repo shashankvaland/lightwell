@@ -48,6 +48,8 @@
     <div id="team" title="The agent team: lights up while each sub-agent works"><span data-a="planner">Planner</span><span data-a="market">Market</span><span data-a="scout">Scout</span><span data-a="feas">Feasibility</span><span data-a="policy">Policy</span><span data-a="deals">Deals</span><span data-a="red">Red team</span></div>
     <div id="log" aria-live="polite"></div>
     <div id="logEmpty" class="empty">The agent's steps appear here as it works: what it read, what it tested, and what it asks you.</div>
+    <details id="history" hidden><summary>Team history <span class="cnt" id="histCount"></span><small>saved in MongoDB Atlas</small></summary>
+      <div id="histBoard"></div><div id="histRuns"></div></details>
   </section>
 
   <section class="tabp" id="tab-ask" role="tabpanel" aria-labelledby="lt-ask">
@@ -220,6 +222,7 @@
 <script src="js/designer.js"></script>
 <script src="js/agent.js"></script>
 <script src="js/ask.js"></script>
+<script src="js/history.js"></script>
 <script src="js/memory.js"></script>
 <script src="js/streetview.js"></script>
 <script src="js/intro.js"></script>

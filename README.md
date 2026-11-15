@@ -300,6 +300,12 @@ lightwell.html, lightwell-houston.html, houston-map.html
 [Doc/TRACKS.md](Doc/TRACKS.md) has the detail, [Doc/DEMO_SCRIPT.md](Doc/DEMO_SCRIPT.md) a three-minute demo, and
 [Doc/DEVPOST_DRAFT.md](Doc/DEVPOST_DRAFT.md) a draft of the submission text.
 
+## Going live (DigitalOcean, MongoDB Atlas, domains)
+
+The backend also serves the website, so one DigitalOcean app hosts the whole thing (`Dockerfile`, `.do/app.yaml`).
+With `MONGODB_URI` set, every run is saved to MongoDB Atlas and the Agent tab shows **Team history**.
+Steps, and the domain shortlist: [Doc/DEPLOY.md](Doc/DEPLOY.md).
+
 ## Limits
 
 Lightwell is a screening tool: it says where to look first. Daylight distances, fire rules and costs vary by city

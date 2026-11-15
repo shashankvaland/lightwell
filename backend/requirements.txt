@@ -5,3 +5,4 @@ deepagents
 langchain-anthropic
 # for backend/count_cars.py (Claude vision car counts)
 anthropic
+pymongo[srv]

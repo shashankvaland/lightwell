@@ -1,0 +1,29 @@
+# DigitalOcean App Platform spec.  doctl apps create --spec .do/app.yaml   (or paste it in Create App -> "App spec")
+# Builds the Dockerfile from GitHub; the site is at /, the API at /api/*. Keys are set as encrypted secrets in the
+# DigitalOcean dashboard (Settings -> App-Level Environment Variables), never in this file.
+name: lightwell
+region: nyc
+services:
+  - name: web
+    github:
+      repo: shashankvaland/lightwell
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: Dockerfile
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb
+    health_check:
+      http_path: /api/health
+    routes:
+      - path: /
+    envs:
+      - key: ANTHROPIC_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: MONGODB_URI
+        scope: RUN_TIME
+        type: SECRET
+      - key: LIGHTWELL_ASK_TIMEOUT
+        scope: RUN_TIME
+        value: "120"

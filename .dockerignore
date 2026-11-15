@@ -1,0 +1,16 @@
+# Keys and licensed data never go into the image (CoStar / Vexcel / Matterport data is licensed to the team)
+.env
+*.env
+lightwell/config.js
+real-data/
+lightwell/data/real_overlay.js
+lightwell/data/real_overlay.json
+# not needed to run
+.git
+.claude
+tests
+Doc
+data
+**/__pycache__
+*.pyc
+*.pdf

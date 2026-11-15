@@ -21,22 +21,34 @@
     $('log').appendChild(d); d.scrollIntoView({ block: 'nearest' }); pulse(who); return d;
   };
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  // The backend defaults to localhost:8000; set BACKEND_URL: "" in config.js to force the offline agent.
-  const backendUrl = () => { const c = window.LIGHTWELL_CONFIG || {}; return (c.BACKEND_URL != null ? c.BACKEND_URL : 'http://localhost:8000').replace(/\/$/, ''); };
+  // Where the backend is: this page's own server when it answers /api/health (the backend serves the page when deployed,
+  // or at localhost:8000), else config.js BACKEND_URL, else http://localhost:8000. BACKEND_URL: "" forces the offline agent.
+  const configured = () => { const c = window.LIGHTWELL_CONFIG || {}; return c.BACKEND_URL != null ? c.BACKEND_URL.replace(/\/$/, '') : null; };
+  const sameOrigin = () => { const L = window.location || {}; return /^https?:$/.test(L.protocol || '') ? L.origin : null; };
+  let found = null;
+  const backendUrl = () => found ?? (configured() ?? 'http://localhost:8000');
   const agent = LW.agent = { backend: null };
 
   function setMode(kind, text) { $('mode').textContent = text; $('mode').className = 'mode ' + kind; }
-  agent.checkBackend = async function () {
-    const url = backendUrl(); let info = null;
-    if (url) try {
+  const health = async url => {
+    try {
       const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 1500);
       const r = await fetch(url + '/api/health', { signal: ctl.signal }); clearTimeout(t);
-      if (r.ok) info = await r.json();
-    } catch (e) { /* backend not running */ }
+      if (r.ok) { const j = await r.json(); if (j && j.ok) return j; }
+    } catch (e) { /* no backend there */ }
+    return null;
+  };
+  agent.checkBackend = async function () {
+    let info = null, url = configured();
+    if (url !== '') {
+      for (const u of [...new Set([sameOrigin(), url || 'http://localhost:8000'].filter(Boolean))]) if ((info = await health(u))) { url = found = u; break; }
+      if (!info) { found = null; url = configured() || 'http://localhost:8000'; }
+    }
     agent.backend = info;
     if (!info) setMode('off', url ? `Offline agent in the browser (no backend at ${url})` : 'Offline agent in the browser (backend disabled in config.js)');
     else setMode(info.llm ? 'live' : 'half', info.llm ? `Backend agent: ${info.model} via deepagents` : 'Backend running without an Anthropic key: fixed plan, same tools');
     $('run').disabled = false; $('run').textContent = 'Run agent';
+    if (LW.history) LW.history.load();
   };
 
   // ---------------- the brief: request → validated constraints ----------------
@@ -294,6 +306,7 @@
       LW.onSelect(best, true); LW.openPlate(best);
     } else LW.log('Planner', 'Nothing passes the brief. Raise the cost cap, lower the minimum home count, widen the window rule or allow lightwell cuts.');
     agent.running = false; $('run').disabled = false; LW.refresh();
+    if (LW.history && agent.backend) setTimeout(() => LW.history.load(), 800);
   };
   $('run').onclick = agent.run;
   Object.assign(agent, { backendUrl, payload, reveal, sleep });

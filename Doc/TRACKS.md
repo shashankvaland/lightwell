@@ -13,6 +13,10 @@ open. Nothing here is a claim the app cannot back up on screen.
 | Amazon: Best Practical AI Innovation | ready | the pitch |
 | Peri: Forward Deployed | **not eligible yet** | one real interview, then fill `lightwell/consult.js` |
 | Arlequin: AI-Driven Forensics | weak fit, honest entry possible | decide as a team whether to enter |
+| MLH: Best Use of DigitalOcean | ready to deploy | create the app from `.do/app.yaml` ([DEPLOY.md](DEPLOY.md)) |
+| MLH: Best Use of MongoDB Atlas | built (Team history) | free Atlas cluster, `MONGODB_URI` in `.env` and in DigitalOcean |
+| MLH: Best Domain Name from GoDaddy Registry | shortlist ready | register one (sleepatwork.co) and point it at the app |
+| MLH: Best .Tech Domain Name | shortlist ready | register lightwellhouston.tech |
 
 ## Best Sustainability Hack
 
