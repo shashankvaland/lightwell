@@ -30,7 +30,7 @@ Asks for: technology that addresses an environmental challenge.
 |---|---|
 | At least two of the three layers, used together | **CoStar** records pick and qualify each tower (leasing, empty floors, tenants and lease ends, year, sprinklers, sales). **Matterport** scans measure the clear ceiling height inside it. The engine's height test then uses the scan, not the estimate. |
 | Something from the combination | The agent's biggest open question is floor-to-floor height. On towers with a scan it answers that question itself and does not ask for a site visit. The **record cross-check** compares CoStar's records with the scan and the map and lists where they disagree. |
-| Agentic, not a chat wrapper | Planner and six sub-agents, 24 tools. It ranks, tests a worse value for every weak input, asks you one question, replans, plans tenant moves, and a red team attacks the plan. |
+| Agentic, not a chat wrapper | Planner and six sub-agents, 25 tools. It ranks, tests a worse value for every weak input, asks you one question, replans, plans tenant moves, and a red team attacks the plan. |
 | A real problem for a real person | Owners, brokers and the city: which tower can legally and physically become homes under Texas SB 840. |
 | Spatial and visual | 3D map with scored towers, floor plates, home designer, Daylight X-ray, Photoreal 3D, Matterport tour, aerial flyover. |
 
@@ -43,7 +43,7 @@ CoStar Discord card. With it, parking counts turn the occupancy check into a rea
 Asks for: a deepagent, any use case.
 
 - `backend/agent.py` builds the run with `create_deep_agent`: a planner, six sub-agents (market, data scout,
-  feasibility, policy, deals, red team) and 24 tools. *Ask Lightwell* is a second deepagent with the same tools.
+  feasibility, policy, deals, red team) and 25 tools. *Ask Lightwell* is a second deepagent with the same tools.
 - The badge under *Run agent* must read **Backend agent: claude-… via deepagents**. If it says scripted or offline,
   the key is missing: put `ANTHROPIC_API_KEY` in `.env` and restart the backend.
 - Show the live steps, the team strip lighting up, the pause for a measurement, and the red team's verdict.

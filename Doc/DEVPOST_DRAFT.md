@@ -42,7 +42,7 @@ shows the evidence behind it.
 ### How we built it
 
 - **Agent:** LangChain **deepagents** with Claude: a planner, six sub-agents (market, data scout, feasibility, policy,
-  deals, red team) and 24 tools, served by FastAPI and streamed to the page. A second deepagent answers questions in
+  deals, red team) and 25 tools, served by FastAPI and streamed to the page. A second deepagent answers questions in
   the *Ask Lightwell* chat.
 - **Engine:** the floor-plate, daylight, fire, cost and carbon maths is written twice, in JavaScript for the page and
   in Python for the agent, and tested to give the same numbers on every tower.

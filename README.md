@@ -10,6 +10,8 @@ that would change its recommendation, and drafts the owner memo.
 
 Built for **HackPrinceton F26** · Main track: **Best Sustainability Hack**
 
+**Full documentation:** [Doc/DOCUMENTATION.md](Doc/DOCUMENTATION.md) (architecture, every rule and number, the agent, the API, the data pipeline).
+
 **Why now:** since 1 September 2025, Texas SB 840 and SB 2477 let an office building at least 5 years old become homes
 without rezoning, traffic studies or extra parking, if at least 65% of it becomes residential. Houston qualifies. But a
 tower that is 40% empty can't reach 65% while tenants sit on scattered floors. Lightwell's agent team checks the 65% rule
@@ -65,14 +67,14 @@ attacks the plan before you see it. The app opens with a short, sourced screen o
 16. **Human in the loop:** correct any value, then approve the memo the agent reviewed. The memo is marked *not
    reviewed* as soon as the brief, an assumption, a correction or the lightwell choice changes. Export a portfolio memo
    and a CSV with a source column per field.
-16. **Measured from the inside (Matterport):** `backend/matterport.py` reads CoStar's Matterport scans of each tower and
+17. **Measured from the inside (Matterport):** `backend/matterport.py` reads CoStar's Matterport scans of each tower and
     measures the clear ceiling height of the scanned office space. That measurement, not the floor-to-floor estimate,
     then decides the height test, and the agent stops asking you for a height the scan already settles (*"the scan
     measured 9 ft clear ceilings, so homes fit: settled without a site visit"*).
-17. **Record cross-check:** compares independent sources about the same tower (CoStar property, tenancy and sale records,
+18. **Record cross-check:** compares independent sources about the same tower (CoStar property, tenancy and sale records,
     Matterport scans, the OpenStreetMap footprint and height, aerial parking counts) and lists where two of them
     disagree, with both sources and both values. Observations to investigate, never findings.
-18. **Remembers what you taught it:** the brief you settled on and the values you corrected are kept in your browser and
+19. **Remembers what you taught it:** the brief you settled on and the values you corrected are kept in your browser and
     restored on the next visit; the agent says so and does not ask again. *Forget* clears it.
 
 | Feature | Where |
@@ -292,7 +294,7 @@ lightwell.html, lightwell-houston.html, houston-map.html
 |---|---|---|
 | **Best Sustainability Hack** (our required track) | technology for an environmental problem | reusing empty towers instead of building new: embodied carbon avoided per tower and in total (an estimate; the assumptions are editable), homes without new land |
 | **CoStar** *Inside and Out: AI for the Built World* | at least two of CoStar / Matterport / Vexcel used together; agentic; a real user; spatial and visual | CoStar records choose and qualify the towers, Matterport scans measure the ceiling that decides the height test, and the record cross-check compares the two; the agent plans, asks, replans and red-teams; 3D map, floor plates, Daylight X-ray, tour and flyover |
-| **LangChain** *Best use of deepagents* | a deepagent | `create_deep_agent` planner with six sub-agents (market, data scout, feasibility, policy, deals, red team) and 20+ tools, plus the Ask Lightwell chat |
+| **LangChain** *Best use of deepagents* | a deepagent | `create_deep_agent` planner with six sub-agents (market, data scout, feasibility, policy, deals, red team) and 25 tools, plus the Ask Lightwell chat |
 | **Amazon** *Best Practical AI Innovation* | agentic, real impact, adapts, easy to use | multi-step plan with a human question in the middle; replans from your answer; remembers your brief and corrections between visits |
 | **Peri** *Forward Deployed* | a real business you consulted, named, with evidence | `lightwell/consult.js` holds the business, the person and what they asked for; it leads every checklist and memo ([Doc/PERI_INTERVIEW.md](Doc/PERI_INTERVIEW.md)) |
 | **Arlequin** *AI-Driven Forensics* | evidence an investigator can check | the record cross-check and the occupancy check: each finding names both sources. Demo mode runs on public (OpenStreetMap) and synthetic data. These are observations to investigate, never accusations |
