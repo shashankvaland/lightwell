@@ -1,4 +1,4 @@
-# Lightwell
+# LightWell
 
 **Find the empty offices that can become homes, and prove it from above, inside and on the books.**
 
