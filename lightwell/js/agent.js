@@ -45,7 +45,9 @@
       if (!info) { found = null; url = configured() || 'http://localhost:8000'; }
     }
     agent.backend = info;
-    if (!info) setMode('off', url ? `Offline agent in the browser (no backend at ${url})` : 'Offline agent in the browser (backend disabled in config.js)');
+    const hosted = !/^(localhost|127\.0\.0\.1|\[::1\]|)$/.test((window.location || {}).hostname || '');
+    if (!info) setMode('off', hosted ? 'Agent runs in your browser: same tools, demo data, no sign-in needed'
+      : url ? `Offline agent in the browser (no backend at ${url})` : 'Offline agent in the browser (backend disabled in config.js)');
     else setMode(info.llm ? 'live' : 'half', info.llm ? `Backend agent: ${info.model} via deepagents` : 'Backend running without an Anthropic key: fixed plan, same tools');
     $('run').disabled = false; $('run').textContent = 'Run agent';
     if (LW.history) LW.history.load();
