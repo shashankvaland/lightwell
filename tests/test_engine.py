@@ -239,3 +239,38 @@ def test_unknown_lease_ends_go_last_cost_the_assumption_and_are_flagged():
     risks = [x["text"] for x in challenge_plan(t, p, [t, r])["risks"]]
     assert any("1 tenant(s) have no lease end on record" in x for x in risks)
     assert not any("simulated" in x for x in risks)                           # real CoStar tenants are not called simulated
+
+
+# ---------------- Data scout ----------------
+def test_scout_parity_and_honesty():
+    from scout import data_priority, scout_gaps
+    p = ROOT / "tests" / "js_scout.json"
+    if not p.exists():
+        pytest.skip("run node tests/parity.mjs first")
+    d = json.loads(p.read_text())
+    bs = [analyze(Building(**row), d["S"], d["A"]) for row in d["input"]]
+    est = scout_gaps(bs)
+    assert est == d["estimates"]
+    assert est and all(e["lo"] <= e["value"] <= e["hi"] for e in est)
+    gaps = {b.id for b in bs if b.src["rep"] == "MISSING"}
+    assert {e["id"] for e in est} == gaps                     # fills only real gaps, never CoStar or simulated values
+    by = {b.id: b for b in bs}
+    for e in est:
+        by[e["id"]].rep, by[e["id"]].src["rep"] = e["value"], "ESTIMATE"
+    for b in bs:
+        analyze(b, d["S"], d["A"])
+    pri = data_priority(bs, d["S"], d["A"], 8)
+    assert pri == d["priority"]
+    assert all(by[x["id"]].src["rep"] not in ("COSTAR", "YOU") for x in pri)
+
+
+def test_estimate_still_fails_require_real():
+    from scout import apply_estimates, scout_gaps
+    a = mk(id="A", rep=0.6, src={"rep": "COSTAR"}, center=[-95.3665, 29.7575], real={"market": True})
+    b = mk(id="B", rep=None, src={"rep": "MISSING"}, center=[-95.3660, 29.7580])
+    est = scout_gaps([a, b])
+    assert [e["id"] for e in est] == ["B"] and 0.6 <= est[0]["value"] <= 0.748
+    apply_estimates({"A": a, "B": b}, est)
+    assert b.src["rep"] == "ESTIMATE"
+    S = {"require": ["market"]}
+    assert "missing real CoStar data" in analyze(b, S).why

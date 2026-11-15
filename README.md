@@ -49,7 +49,16 @@ attacks the plan before you see it. The app opens with a short, sourced screen o
     so they stay offices and fill up), and prices the incentives. Gold arcs on the map show every move.
 12. **Red team:** attacks the move plan (long leases, far moves, receivers that are themselves good conversions, unverified
     age, simulated data). If the plan is weak, the planner tries the next tower.
-13. **Human in the loop:** correct any value, then approve the memo the agent reviewed. The memo is marked *not
+13. **Data scout (towers with no CoStar record):** CoStar covers only some towers. The scout estimates percent leased for
+    the rest from the most similar CoStar towers (nearby, similar height), pulled toward the downtown average (CBRE Q4 2025),
+    with a range, a confidence and the towers it used (evidence drawer). Estimates are tagged ESTIMATE and still fail
+    *Require real: CoStar*. It also ranks **which towers to ask CoStar about next**: the ones where the missing data would
+    change the decision (pass/fail flips, big score swings, the 65% check needs floor-by-floor data).
+14. **Ask Lightwell:** a chat in the dashboard. Ask about any tower, compare towers, try a what-if ("what if the cap were
+    $350k?", with an *Apply* button), the Texas fast-track, tenant moves or the data gaps. Tower ids are links to the map.
+    With an Anthropic key, Claude answers through deepagents with the agent's tools (`POST /api/ask`); without one, the
+    browser answers the common questions from the same engine.
+15. **Human in the loop:** correct any value, then approve the memo the agent reviewed. The memo is marked *not
    reviewed* as soon as the brief, an assumption, a correction or the lightwell choice changes. Export a portfolio memo
    and a CSV with a source column per field.
 
@@ -92,8 +101,8 @@ Open http://localhost:8765/lightwell/index.html. The page looks for the backend 
 needed). The badge under *Run agent* says which agent is running; if the backend isn't up, or fails mid-run, the page
 switches to the built-in offline agent and the badge says so.
 
-- With `ANTHROPIC_API_KEY` set (in `.env`, see the keys table below), the agent is **Claude running through LangChain deepagents**: a planner with five
-  sub-agents (market-analyst, feasibility-engineer, policy-analyst, deal-maker, red-team). The strip under *Run agent*
+- With `ANTHROPIC_API_KEY` set (in `.env`, see the keys table below), the agent is **Claude running through LangChain deepagents**: a planner with six
+  sub-agents (market-analyst, data-scout, feasibility-engineer, policy-analyst, deal-maker, red-team). The strip under *Run agent*
   lights up whichever one is working.
   Change the model with `LIGHTWELL_MODEL`.
 - Without a key, the backend runs the same tools in a fixed order, so the demo never depends on the network.
@@ -213,6 +222,8 @@ lightwell/              the app (open lightwell/index.html)
   js/ui.js              panels, evidence drawer, floor plate, corrections, brief, checklist, memos, CSV
   js/agent.js           request -> brief; streams the backend agent (incl. questions), or runs the plan in the browser
   js/shuffle.js         Texas fast-track screen, tenants, tenant-move planner, red team
+  js/scout.js           data scout: estimates for towers with no CoStar record, which towers to request next
+  js/ask.js             Ask Lightwell chat (Claude via /api/ask, or offline answers in the browser)
   js/intro.js           start screen: the Texas law and Houston's empty offices (sourced)
   config.example.js     copy to config.js for your keys
   consult.js            what the business we consulted asked for (Peri track); feeds the checklist and memo
@@ -222,6 +233,7 @@ backend/
   agent.py              deepagents planner, sub-agents and tools
   engine.py             Python copy of engine.js
   shuffle.py            Python copy of shuffle.js
+  scout.py              Python copy of scout.js
   daylight.py           Daylight X-ray precompute: neighbouring buildings seen from every wall
   app.py                FastAPI server streaming agent steps (SSE)
   import_data.py        joins real-data/*.csv to the map

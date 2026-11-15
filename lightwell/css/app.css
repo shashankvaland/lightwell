@@ -302,4 +302,23 @@ table.kv td:first-child{color:var(--muted);width:42%}table.kv.grid td:first-chil
   .maplibregl-ctrl-bottom-right{right:0;bottom:46vh}#g3d .cesium-viewer-bottom{left:8px!important;bottom:46vh!important}
   #modal,#mpBox,#avBox{padding:8px}}
 @media (max-width:760px){#intro .istats,#intro .icols{grid-template-columns:1fr}#intro h2{font-size:20px}#intro .ibox{padding:20px 16px}}
+/* Ask Lightwell (chat) */
+#chat{display:flex;flex-direction:column;gap:6px;max-height:340px;overflow-y:auto;margin-bottom:8px}
+#chat:empty{display:none}
+.cm{font-size:12.5px;line-height:1.5;padding:8px 11px;border-radius:12px;max-width:96%;overflow-wrap:anywhere}
+.cm.user{align-self:flex-end;background:rgba(245,185,66,.14);border:1px solid rgba(245,185,66,.32);border-bottom-right-radius:4px}
+.cm.bot{align-self:flex-start;background:var(--raise);border:1px solid var(--line);border-bottom-left-radius:4px}
+.cm a{color:var(--gold2);font-weight:600;text-decoration:none}.cm a:hover{text-decoration:underline}
+.cm ol{margin:4px 0 0;padding-left:18px}.cm li{margin:3px 0}.cm hr{border:0;border-top:1px solid var(--line);margin:8px 0}
+.cm .srcs{font-size:11px;color:var(--muted)}.cm .tag{font-size:9px;padding:0 4px;cursor:default}
+.cm .cby{margin-top:5px;font-size:10.5px;color:var(--muted)}
+.cm .cstep{font-size:11px;color:var(--muted);margin:2px 0}.cm .cstep b{color:var(--ink);font-weight:600}
+.cm.pending .dots::after{content:'…';animation:blink 1s infinite}@keyframes blink{50%{opacity:.2}}
+.cm table.cmp{border-collapse:collapse;margin:4px 0 6px;font-size:11.5px;width:100%}
+.cm table.cmp td,.cm table.cmp th{border-top:1px solid var(--line);padding:3px 5px;text-align:left;vertical-align:top}
+.cm table.cmp td:first-child{color:var(--muted);white-space:nowrap}
+.cm button.mini{margin-left:4px;padding:2px 8px;font-size:11px}
+#askChips{margin:0 0 8px}#askChips:empty{display:none}
+.askbar{display:flex;gap:6px}.askbar input{flex:1;min-width:0;padding:8px 10px}.askbar button{flex:none}
+
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}

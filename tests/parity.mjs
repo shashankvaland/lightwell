@@ -5,7 +5,7 @@ import fs from 'node:fs'; import vm from 'node:vm'; import path from 'node:path'
 const root = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
 const ctx = { window: {}, console, Math, JSON, Set, Map, Array, Object, String, Number, Infinity, isFinite };
 ctx.window.window = ctx.window; vm.createContext(ctx);
-for (const f of ['lightwell/data/daylight.js', 'lightwell/js/engine.js', 'lightwell/js/data.js', 'lightwell/js/shuffle.js']) vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f });
+for (const f of ['lightwell/data/daylight.js', 'lightwell/js/engine.js', 'lightwell/js/data.js', 'lightwell/js/shuffle.js', 'lightwell/js/scout.js']) vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f });
 const LW = ctx.window.LW;
 const gj = JSON.parse(fs.readFileSync(path.join(root, 'lightwell/data/houston_downtown.geojson'), 'utf8'));
 const B = LW.buildCandidates(gj, 'demo');
@@ -53,6 +53,25 @@ for (const sc of scenarios) {
   out.push({ S: sc.S, A: LW.A, rows });
 }
 fs.writeFileSync(path.join(root, 'tests/js_results.json'), JSON.stringify(out));
+
+// Data scout: a quarter of the towers carry "CoStar" records, a quarter have none (real-data gaps), the rest simulated.
+LW.S = { ...scenarios[0].S };
+const sc = B.map(b0 => {
+  const b = { ...b0, overrides: {}, src: { ...b0.src }, ev: {} };
+  if (b.idx % 4 === 0) Object.assign(b.src, { rep: 'COSTAR', year: 'COSTAR', vacant: 'COSTAR' });
+  else if (b.idx % 4 === 1) { b.rep = null; b.year = null; b.vacantFloors = []; Object.assign(b.src, { rep: 'MISSING', year: 'MISSING', vacant: 'MISSING' }); }
+  return b;
+});
+const scIn = sc.map(b => ({ id: b.id, W: b.W, D: b.D, heightM: b.heightM, floors: b.floors, f2f: b.f2f, year: b.year, rep: b.rep, obs: b.obs,
+  scanned: b.scanned, core: b.core, forceLW: null, real: b.real, vacantFloors: b.vacantFloors, center: b.center, day: b.day,
+  src: { rep: b.src.rep, year: b.src.year, vacant: b.src.vacant } }));
+sc.forEach(b => LW.analyze(b));
+const est = LW.scoutGaps(sc);
+for (const e of est) { const b = sc.find(x => x.id === e.id); b.rep = e.value; b.src.rep = 'ESTIMATE'; }
+sc.forEach(b => LW.analyze(b));
+const pri = LW.dataPriority(sc, 8);
+fs.writeFileSync(path.join(root, 'tests/js_scout.json'), JSON.stringify({ S: LW.S, A: LW.A, input: scIn, estimates: est, priority: pri }));
+console.log(`Data scout: ${est.length} towers estimated; top data request ${pri[0] ? pri[0].id + ' (' + pri[0].reasons[0] + ')' : 'none'}.`);
 const all = out.flatMap(s => s.rows), bad = all.filter(r => r.issues.length || r.altIssues.length);
 console.log(`JS engine: ${B.length} towers x ${scenarios.length} scenarios; ${bad.length} layouts with geometry issues; ` +
   `${out[0].rows.filter(r => r.summary.passes).length} pass the default brief.`);

@@ -198,7 +198,8 @@
       ${row(b, 'f2f', `${f2f} ft floor-to-floor${f2f < A.f2fHard ? ' (too low for homes)' : f2f < A.f2fMin ? ' (tight for homes)' : ''}`)}
       ${b.sprinklers === true || b.sprinklers === false ? row(b, 'sprinklers', b.sprinklers ? 'Sprinklers on record' : 'No sprinklers on record: a full retrofit is priced in') : ''}
       <h4>Market</h4>
-      ${row(b, 'rep', rep == null ? 'Leased: unknown' : `${pct(rep)} leased`)}
+      ${row(b, 'rep', rep == null ? 'Leased: unknown' : b.ev.scout && LW.srcOf(b, 'rep') === 'ESTIMATE'
+        ? `About ${pct(rep)} leased (scout estimate, ${pct(b.ev.scout.lo)}–${pct(b.ev.scout.hi)}, ${b.ev.scout.confidence} confidence)` : `${pct(rep)} leased`)}
       ${row(b, 'year', year == null ? 'Year built: unknown' : `Built ${year}${cs.renovated && LW.srcOf(b, 'year') === 'COSTAR' ? ` · renovated ${esc(cs.renovated)}` : ''}`)}
       ${row(b, 'obs', parkTxt)}
       ${row(b, null, `Vacancy signal ${pct(b.vac)} (from ${b.vacBasis})`, b.vacBasis === 'assumed' ? 'ASSUMED' : 'FEASIBILITY')}
@@ -285,6 +286,11 @@
         ['Current tenancies', c.tenants_current != null ? `${c.tenants_current} (${c.tenants_with_lease_end || 0} with a lease end on record)` : null],
         ['Occupied by current tenancies', c.leased_tenancy != null ? `${c.leased_tenancy}% of RBA (tenancy records can be incomplete)` : null],
         ['Share leased at its latest sale', c.sale_leased != null ? `${c.sale_leased}% (${c.sale_date})` : null]]));
+      const sc = b.ev.scout;
+      if (k === 'rep' && sc && LW.srcOf(b, 'rep') === 'ESTIMATE') parts.push(`<h4>How the data scout estimated this</h4><p>No CoStar record for this tower. The scout took the ${sc.neighbours.length} most similar CoStar towers
+        (closest, and closest in floor count), weighted them, and pulled the result toward the downtown average (${pct(LW.SCOUT.prior)} leased; ${esc(LW.SCOUT.priorSrc)}).
+        Range ${pct(sc.lo)}–${pct(sc.hi)}, <b>${sc.confidence} confidence</b> (${sc.near} comparable towers within ${LW.SCOUT.nearM} m). Still counts as missing for “Require real: CoStar”.</p>`
+        + kv(sc.neighbours.map(x => { const t = LW.B.find(y => y.id === x.id); return [t ? t.label : x.id, `${pct(x.leased)} leased · ${fmt(x.dist_m)} m away`]; })));
       if (k === 'year' && LW.eff(b, 'year') == null) parts.push(`<p>Engine assumption: costs use ${LW.A.unknownYear} (abatement and sprinkler retrofit included), age fit neutral.</p>`);
       if (k === 'rep' && LW.eff(b, 'rep') == null) parts.push(`<p>Engine assumption: vacancy from ${b.vacBasis}${b.vacBasis === 'assumed' ? ` (${pct(LW.A.unknownVacancy)}, Houston average)` : ''}.</p>`);
     }
