@@ -375,9 +375,15 @@
       return w ? [w.x, w.y] : null;
     },
     _flush() {
-      if (!this.prim || !this.prim.ready || !this.colors.size) return;
-      for (const [id, col] of this.colors) { const a = this.prim.getGeometryInstanceAttributes(id); if (a) a.color = Cesium.ColorGeometryInstanceAttribute.toValue(col, a.color); }
-      this.colors.clear();
+      if (this.prim && this.prim.ready && this.colors.size) {
+        for (const [id, col] of this.colors) { const a = this.prim.getGeometryInstanceAttributes(id); if (a) a.color = Cesium.ColorGeometryInstanceAttribute.toValue(col, a.color); }
+        this.colors.clear();
+      }
+      // Daylight floors over the photoreal city: every volume is created in one colour (Cesium requires it), then coloured here
+      if (this.dayPrim && this.dayPrim.ready && this.dayColors && this.dayColors.size) {
+        for (const [id, col] of this.dayColors) { const a = this.dayPrim.getGeometryInstanceAttributes(id); if (a) a.color = Cesium.ColorGeometryInstanceAttribute.toValue(col, a.color); }
+        this.dayColors.clear(); this.viewer.scene.requestRender();
+      }
     },
     paint(b) { if (this.ready) { this.colors.set('b:' + b.idx, this._colorFor(b)); this.viewer.scene.requestRender(); } },
     select(b, prev) { if (prev) this.paint(prev); if (b) this.paint(b); },
@@ -447,12 +453,16 @@
         this._dayKey = key;
         const google = this.mode === 'google', insts = [];
         const vf = google ? Cesium.VertexFormat.POSITION_ONLY : Cesium.PerInstanceColorAppearance.VERTEX_FORMAT;
+        // a classification primitive needs one colour for every volume when it is built: the real colours follow in _flush()
+        const one = Cesium.Color.fromCssColorString('#3a4766').withAlpha(0.55); this.dayColors = new Map();
         for (const b of LW.B) {
           if (!b.plan) LW.analyze(b);
           const n = LW.eff(b, 'floors'), fh = b.heightM / n;
           for (let f = 2; f <= n; f++) {
-            const lo = this.h0 + (f - 1) * fh, hi = this.h0 + f * fh - Math.min(0.8, fh * 0.2);
-            insts.push(this._poly(b.ring, lo, hi, Cesium.Color.fromCssColorString(LW.dayColor(b, f)).withAlpha(google ? 0.55 : 0.95), `f:${b.idx}:${f}`, vf));
+            const lo = this.h0 + (f - 1) * fh, hi = this.h0 + f * fh - Math.min(0.8, fh * 0.2), id = `f:${b.idx}:${f}`;
+            const col = Cesium.Color.fromCssColorString(LW.dayColor(b, f)).withAlpha(google ? 0.55 : 0.95);
+            if (google) this.dayColors.set(id, col);
+            insts.push(this._poly(b.ring, lo, hi, google ? one : col, id, vf));
           }
         }
         this.dayPrim = this.viewer.scene.primitives.add(google

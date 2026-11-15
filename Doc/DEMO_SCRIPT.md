@@ -5,8 +5,8 @@ Run it in **Real data only** mode with the Claude agent on. One person talks, on
 ## Before the judges arrive
 
 1. Backend running, and the badge under *Run agent* reads **Backend agent: claude-… via deepagents**.
-2. Page reloaded (Cmd+Shift+R). If the Brief panel says *Restored from your last visit*, press **Forget**, unless you
-   want to show the memory.
+2. Page reloaded (Cmd+Shift+R). If the **Brief** tab has a gold dot, open it and press **Forget**, unless you want to
+   show the memory. If the Shortlist says *No tower passes this brief*, press the button it offers.
 3. One full run done already, so the map tiles, the 3D city and the flyover are cached.
 4. A screen recording of a full run ready, in case the Wi-Fi fails.
 

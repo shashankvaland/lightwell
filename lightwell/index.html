@@ -21,67 +21,91 @@
   <input id="sunHour" type="range" min="7" max="19" step="0.25" value="15" aria-label="Hour, Houston time"><b id="sunL"></b></div>
 <div id="toast" role="status" aria-live="polite"></div>
 
-<aside id="left">
-  <h1><i></i>Lightwell</h1>
-  <div class="sub">Downtown Houston: which offices can become homes? <a href="#" id="whyHouston">Why now?</a></div>
-  <div id="dataMode" class="seg" title="Demo fill-in simulates missing values on anonymous towers; Real data only never invents a value">
-    <button data-m="demo">Demo fill-in</button><button data-m="real">Real data only</button></div>
-  <div class="note" id="dataNote"></div>
+<aside id="left" aria-label="Agent, questions and brief">
+  <header class="phead">
+    <h1><i></i>Lightwell</h1>
+    <div class="sub">Downtown Houston: which offices can become homes? <a href="#" id="whyHouston">Why now?</a></div>
+    <div id="dataMode" class="seg" title="Demo fill-in simulates missing values on anonymous towers; Real data only never invents a value">
+      <button data-m="demo">Demo fill-in</button><button data-m="real">Real data only</button></div>
+    <div id="dataNote"></div>
+  </header>
+  <nav class="tabs" id="leftTabs" role="tablist" aria-label="Left panel">
+    <button role="tab" data-tab="agent" id="lt-agent" aria-controls="tab-agent" aria-selected="true" class="on">Agent</button>
+    <button role="tab" data-tab="ask" id="lt-ask" aria-controls="tab-ask" aria-selected="false">Ask</button>
+    <button role="tab" data-tab="brief" id="lt-brief" aria-controls="tab-brief" aria-selected="false">Brief<i class="dot" title="Your brief differs from the default"></i></button>
+  </nav>
 
-  <h2>Ask the agent</h2>
-  <textarea id="prompt" aria-label="Your request, in plain English">Find offices downtown I can turn into homes for under $300k a home.</textarea>
-  <div id="examples" class="chips" aria-label="Example requests">
-    <button data-q="Find offices downtown I can turn into homes for under $300k a home.">Under $300k a home</button>
-    <button data-q="Only towers with real CoStar data and at least 200 homes, under $300k a home.">Real CoStar data, 200+ homes</button>
-    <button data-q="Find offices I can turn into homes for under $350k a home, only homes that see the sky.">Strict daylight</button></div>
-  <div class="btns"><button id="run" class="primary" disabled>Loading…</button></div>
-  <div id="mode" class="mode">Checking for the agent backend…</div>
-  <div id="team" title="The agent team: lights up while each sub-agent works"><span data-a="planner">Planner</span><span data-a="market">Market</span><span data-a="scout">Scout</span><span data-a="feas">Feasibility</span><span data-a="policy">Policy</span><span data-a="deals">Deals</span><span data-a="red">Red team</span></div>
-  <div id="log" aria-live="polite"></div>
+  <section class="tabp on" id="tab-agent" role="tabpanel" aria-labelledby="lt-agent">
+    <label class="lbl" for="prompt">Tell the agent what you are looking for</label>
+    <textarea id="prompt" aria-label="Your request, in plain English">Find offices downtown I can turn into homes for under $300k a home.</textarea>
+    <div id="examples" class="chips" aria-label="Example requests">
+      <button data-q="Find offices downtown I can turn into homes for under $300k a home.">Under $300k a home</button>
+      <button data-q="Only towers with real CoStar data and at least 200 homes, under $300k a home.">Real CoStar data, 200+ homes</button>
+      <button data-q="Find offices I can turn into homes for under $350k a home, only homes that see the sky.">Strict daylight</button></div>
+    <button id="briefMini" class="bmini" title="The rules the agent will use. Click to change them."><span id="briefMiniTxt"></span><b>Edit</b></button>
+    <div class="btns"><button id="run" class="primary" disabled>Loading…</button></div>
+    <div id="mode" class="mode">Checking for the agent backend…</div>
+    <div id="team" title="The agent team: lights up while each sub-agent works"><span data-a="planner">Planner</span><span data-a="market">Market</span><span data-a="scout">Scout</span><span data-a="feas">Feasibility</span><span data-a="policy">Policy</span><span data-a="deals">Deals</span><span data-a="red">Red team</span></div>
+    <div id="log" aria-live="polite"></div>
+    <div id="logEmpty" class="empty">The agent's steps appear here as it works: what it read, what it tested, and what it asks you.</div>
+  </section>
 
-  <h2>Ask Lightwell</h2>
-  <div id="chat" aria-live="polite"></div>
-  <div class="chips" id="askChips"></div>
-  <form id="askForm" class="askbar"><input id="askQ" type="text" autocomplete="off" placeholder="Ask about any tower, the data gaps, or a what-if…" aria-label="Ask Lightwell"><button class="primary" type="submit">Ask</button></form>
-  <div id="askMode" class="mode"></div>
+  <section class="tabp" id="tab-ask" role="tabpanel" aria-labelledby="lt-ask">
+    <div class="hint">Ask about any tower, compare towers, or try a what-if. Tower names in answers are links to the map.</div>
+    <div id="chat" aria-live="polite"></div>
+    <div class="chips" id="askChips"></div>
+    <form id="askForm" class="askbar"><input id="askQ" type="text" autocomplete="off" placeholder="Ask about any tower, the data gaps, or a what-if…" aria-label="Ask Lightwell"><button class="primary" type="submit">Ask</button></form>
+    <div id="askMode" class="mode"></div>
+  </section>
 
-  <h2>Brief (live)</h2>
-  <div class="hint">The rules for this search. Change one and every tower re-scores.</div>
-  <div class="note brief" id="briefText"></div>
-  <div id="memNote" role="status"></div>
-  <label class="row" for="dist">Max distance to a window <b id="dL"></b></label>
-  <input id="dist" type="range" min="25" max="40" value="30">
-  <label class="row" for="cap">Cost cap per home <b id="cL"></b></label>
-  <input id="cap" type="range" min="150" max="450" step="10" value="300">
-  <label class="row">Minimum homes per tower <input id="minHomes" type="number" min="1" max="5000" value="20"></label>
-  <label class="chk"><input type="checkbox" id="lw" checked> Allow lightwell cuts</label>
-  <label class="chk"><input type="checkbox" id="useParking" checked> Use parking evidence (Vexcel)</label>
-  <label class="chk"><input type="checkbox" id="dayOn" checked> Check daylight from neighbours</label>
-  <label class="row" for="dayLim">Max sky blocked by neighbours <b id="dayL"></b></label>
-  <input id="dayLim" type="range" min="20" max="35" value="25">
-  <label class="chk"><input type="checkbox" id="dayStrict"> Strict daylight: don't count dim homes</label>
-  <div id="require" class="chk req">Require real:
-    <label><input type="checkbox" value="market"> CoStar</label><label><input type="checkbox" value="aerial"> Vexcel</label><label><input type="checkbox" value="interior"> Matterport</label></div>
-
-  <details><summary>Assumptions (estimates)</summary><div id="assume"></div>
-    <div class="note" style="margin-top:8px">Change any number and every tower re-scores. Replace with a real cost model before any decision.</div></details>
+  <section class="tabp" id="tab-brief" role="tabpanel" aria-labelledby="lt-brief">
+    <div class="hint">The rules for this search. Change one and every tower re-scores.</div>
+    <div class="note brief" id="briefText"></div>
+    <div id="memNote" role="status"></div>
+    <h2>Homes and cost</h2>
+    <label class="row" for="cap">Cost cap per home <b id="cL"></b></label>
+    <input id="cap" type="range" min="150" max="450" step="10" value="300">
+    <label class="row">Minimum homes per tower <input id="minHomes" type="number" min="1" max="5000" value="20"></label>
+    <label class="chk"><input type="checkbox" id="lw" checked> Allow lightwell cuts</label>
+    <h2>Daylight</h2>
+    <label class="row" for="dist">Max distance to a window <b id="dL"></b></label>
+    <input id="dist" type="range" min="25" max="40" value="30">
+    <label class="chk"><input type="checkbox" id="dayOn" checked> Check daylight from neighbours</label>
+    <label class="row" for="dayLim">Max sky blocked by neighbours <b id="dayL"></b></label>
+    <input id="dayLim" type="range" min="20" max="35" value="25">
+    <label class="chk"><input type="checkbox" id="dayStrict"> Strict daylight: don't count dim homes</label>
+    <h2>Evidence</h2>
+    <label class="chk"><input type="checkbox" id="useParking" checked> Use parking evidence (Vexcel)</label>
+    <div id="require" class="chk req">Only towers with real:
+      <label><input type="checkbox" value="market"> CoStar</label><label><input type="checkbox" value="aerial"> Vexcel</label><label><input type="checkbox" value="interior"> Matterport</label></div>
+    <details><summary>Assumptions (estimates)</summary><div id="assume"></div>
+      <div class="note" style="margin-top:8px">Change any number and every tower re-scores. Replace with a real cost model before any decision.</div></details>
+  </section>
 </aside>
 
-<aside id="right">
-  <div id="card"></div>
-  <h2 style="margin-top:0">Across downtown</h2>
-  <div class="kpis">
-    <div class="kpi"><b id="kCand">–</b><span>real towers tested</span></div>
-    <div class="kpi"><b id="kHomes">–</b><span>homes possible</span></div>
-    <div class="kpi"><b id="kCo2">–</b><span>t CO₂e avoided</span></div>
-    <div class="kpi"><b id="kFlags">–</b><span>occupancy flags</span></div>
-  </div>
-  <div id="exports" class="btns"><button id="portfolio">Portfolio memo</button><button id="csv">Export CSV</button></div>
-  <h2>Best conversion candidates</h2>
-  <div id="ranking"><div class="guide">
-    <div><b>1</b><span>Ask in plain English, or just press <i>Run agent</i>.</span></div>
-    <div><b>2</b><span>Click a tower on the map or in this list for its numbers and the evidence behind them.</span></div>
-    <div><b>3</b><span>Approve the owner memo, or export the shortlist.</span></div></div></div>
+<aside id="right" aria-label="Shortlist and selected tower">
+  <nav class="tabs" id="rightTabs" role="tablist" aria-label="Right panel">
+    <button role="tab" data-tab="list" id="rt-list" aria-controls="tab-list" aria-selected="true" class="on">Shortlist<span class="cnt" id="rtCount"></span></button>
+    <button role="tab" data-tab="tower" id="rt-tower" aria-controls="tab-tower" aria-selected="false">Tower</button>
+  </nav>
+  <section class="tabp on" id="tab-list" role="tabpanel" aria-labelledby="rt-list">
+    <div class="kpis">
+      <div class="kpi"><b id="kCand">–</b><span>real towers tested</span></div>
+      <div class="kpi"><b id="kHomes">–</b><span>homes possible</span></div>
+      <div class="kpi"><b id="kCo2">–</b><span>t CO₂e avoided</span></div>
+      <div class="kpi"><b id="kFlags">–</b><span>occupancy flags</span></div>
+    </div>
+    <div id="exports" class="btns"><button id="portfolio">Portfolio memo</button><button id="csv">Export CSV</button></div>
+    <div id="nopass" role="status"></div>
+    <div id="ranking"><div class="guide">
+      <div><b>1</b><span>Ask in plain English, or just press <i>Run agent</i>.</span></div>
+      <div><b>2</b><span>Click a tower on the map or in this list for its numbers and the evidence behind them.</span></div>
+      <div><b>3</b><span>Approve the owner memo, or export the shortlist.</span></div></div></div>
+  </section>
+  <section class="tabp" id="tab-tower" role="tabpanel" aria-labelledby="rt-tower">
+    <div id="card"></div>
+    <div id="cardEmpty" class="empty">Click a tower on the map or in the shortlist to see its numbers, with the source of each one.</div>
+  </section>
 </aside>
 
 <div id="plateBox" role="dialog" aria-labelledby="plateTitle">

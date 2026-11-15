@@ -79,15 +79,17 @@ attacks the plan before you see it. The app opens with a short, sourced screen o
 | **Home designer:** click any home on the floor plate (or a floor in the card's stack or the 3D floor views) for 3-5 concept apartment plans: rooms, furniture, sizes, rule checks, wet-wall and cost notes; filter by bedrooms, baths, work nook, accessible bath, or describe it in words; save a plan for a run of floors. **Shift+click** (or *Select several*) 2-3 neighbouring homes on the same wall and *Merge and design* to plan them as one bigger family home | Building card → *Design homes* · Floor plate |
 | Clear ceiling height measured in CoStar's Matterport scans, used by the height test (MATTERPORT tag, evidence with the scans used) | Building card → Building |
 | Record cross-check: where two sources disagree, each with both values (RECORD CHECK tag) | Building card · agent's Forensics step · memo |
-| Memory between visits: your brief and corrections come back, with a *Forget* button | Left panel → Brief |
+| Memory between visits: your brief and corrections come back (a dot on the Brief tab), with a *Forget* button | Left panel → Brief |
 | Daylight X-ray: floors coloured by how much sky their windows see, lines to the blocking buildings, sun shadows | Daylight toggle · Photoreal 3D sun bar |
 | Aerial flyover of a real CoStar tower (Google Aerial View; one lookup, billed only when a video exists) and CoStar's Matterport 3D tour, each in a full-window viewer | Building card → See the building |
-| Live constraints (window distance, cost cap, lightwell on/off) | Left panel |
-| Editable assumptions (cost, carbon, travel limit) | Left panel → Assumptions |
+| Tabbed side panels: **Agent · Ask · Brief** on the left, **Shortlist · Tower** on the right | Both panels |
+| When no tower passes, the Shortlist says why and offers the one change that fixes it | Right panel → Shortlist |
+| Live constraints (window distance, cost cap, lightwell on/off) | Left panel → Brief |
+| Editable assumptions (cost, carbon, travel limit) | Left panel → Brief → Assumptions |
 | Source tag on every **field**: COSTAR, VEXCEL, MATTERPORT, OSM, ESTIMATE, ASSUMED, SIMULATED, MISSING, YOU | Building card |
 | Evidence drawer: click any tag for the record, capture dates, car counts and confidence, scan id, assumptions | Building card |
 | "Before a site visit" checklist from the evidence gaps, plus what the consulted business asked for | Building card, memo |
-| Demo fill-in vs Real data only | Left panel |
+| Demo fill-in vs Real data only | Left panel, top |
 | Keyboard use: Tab through the controls, Enter opens a ranked tower, Esc closes the top window; visible focus ring; reduced motion respected | Everywhere |
 
 ## Quick start

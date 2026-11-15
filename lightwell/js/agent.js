@@ -88,6 +88,7 @@
   // Renders a small form in the agent log; resolves with the raw answer, or null if skipped.
   LW.askUser = function (q) {
     return new Promise(resolve => {
+      if (LW.tab) LW.tab('left', 'agent');   // the question is in the agent's log: bring it into view
       const d = LW.log('Planner', `<b>Measurement needed: ${q.tower}, ${q.label}.</b> ${q.why}<br>Current value: ${q.current} (${q.source || 'estimate'}).
         <div class="ask"><input type="text" placeholder="${q.placeholder || ''}"><button class="primary">Use measurement</button><button>Skip</button></div><div class="askErr"></div>`);
       d.classList.add('asking');

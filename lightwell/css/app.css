@@ -109,7 +109,7 @@ details{margin-top:14px}summary{cursor:pointer;color:var(--gold);font-size:10.5p
 .you{color:var(--green);font-size:11px}
 
 /* ---------- building card ---------- */
-#card{display:none;background:var(--raise);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px;animation:fade .3s var(--ease)}
+#card{display:none;animation:fade .3s var(--ease)}
 .chead{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
 #card h3{margin:0;font-size:16px;font-weight:700;letter-spacing:-.01em;line-height:1.25}
 #card h3 small{color:var(--muted);font-size:11px;font-weight:600;margin-left:3px}
@@ -302,6 +302,54 @@ table.kv td:first-child{color:var(--muted);width:42%}table.kv.grid td:first-chil
   .maplibregl-ctrl-bottom-right{right:0;bottom:46vh}#g3d .cesium-viewer-bottom{left:8px!important;bottom:46vh!important}
   #modal,#mpBox,#avBox{padding:8px}}
 @media (max-width:760px){#intro .istats,#intro .icols{grid-template-columns:1fr}#intro h2{font-size:20px}#intro .ibox{padding:20px 16px}}
+/* ---------- side panels: a short header, tabs, and one scrolling body ---------- */
+aside{display:flex;flex-direction:column;padding:0;overflow:hidden}
+.phead{flex:none;padding:16px 16px 12px}
+.phead .sub{margin:4px 0 10px}.phead .seg{margin:0 0 8px}
+#dataNote{font-size:11.5px;color:var(--muted)}
+#dataNote .dchips{margin:0}
+#dataNote details{margin-top:6px}
+#dataNote summary{font-size:11px;letter-spacing:0;text-transform:none;font-weight:600;color:var(--muted)}
+#dataNote summary:hover{color:var(--ink2)}#dataNote p{margin:5px 0 0;line-height:1.45}
+.tabs{flex:none;display:flex;gap:2px;padding:0 10px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(255,255,255,.02)}
+#right .tabs{border-top:0;padding-top:4px}
+.tabs button{position:relative;flex:1;min-width:0;padding:11px 6px 10px;border:0;border-radius:0;background:none;font-size:12.5px;font-weight:600;color:var(--muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transform:none}
+.tabs button:hover{background:none;color:var(--ink)}
+.tabs button.on{color:var(--gold2)}
+.tabs button.on::after{content:"";position:absolute;left:12px;right:12px;bottom:-1px;height:2px;border-radius:2px;background:var(--gold)}
+.tabs button:focus-visible{outline-offset:-3px}
+.tabs .cnt{margin-left:6px;padding:1px 7px;border-radius:999px;background:var(--raise2);color:var(--ink2);font-size:10.5px;font-variant-numeric:tabular-nums}
+.tabs .cnt:empty{display:none}
+.tabs .dot{display:none;width:6px;height:6px;border-radius:50%;background:var(--gold);margin-left:6px;vertical-align:1px}
+.tabs button.changed .dot{display:inline-block}
+.tabp{display:none;flex:1;min-height:0;overflow-y:auto;padding:14px 16px 18px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
+.tabp.on{display:block;animation:fade .2s var(--ease)}
+.tabp>h2:first-child,.tabp>.hint:first-child{margin-top:0}
+.lbl{display:block;font-size:11.5px;color:var(--muted);margin-bottom:6px}
+.empty{margin-top:12px;padding:14px;border:1px dashed var(--line2);border-radius:12px;color:var(--muted);font-size:12px;line-height:1.45;text-align:center}
+#log:not(:empty)+#logEmpty{display:none}
+.bmini{display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px;margin-top:9px;padding:7px 10px;text-align:left;font-size:11.5px;
+  font-weight:500;color:var(--ink2);border-radius:10px}
+.bmini span{min-width:0;line-height:1.4}.bmini b{flex:none;color:var(--gold2);font-size:11px;font-weight:700}
+#tab-brief h2{margin:16px 0 4px}
+/* shortlist: totals, then the towers that pass, then the rest */
+#exports{margin-top:8px}
+#nopass{display:none;margin-top:10px;padding:11px 12px;border-radius:12px;border:1px solid rgba(242,104,124,.45);background:rgba(242,104,124,.09);font-size:12px;line-height:1.45}
+#nopass b{display:block;margin-bottom:2px;color:var(--ink)}#nopass .btns{margin-top:9px;flex-direction:column}#nopass .btns button{padding:7px 10px}
+#ranking{margin-top:4px}
+.rgroup{display:flex;align-items:center;gap:8px;margin:14px 0 4px;padding:0 2px;font-size:10.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)}
+.rgroup::after{content:"";flex:1;height:1px;background:var(--line)}
+.rgroup.ok{color:var(--green)}.rgroup i{font-style:normal;color:var(--ink2);font-variant-numeric:tabular-nums}
+details.rfail{margin-top:0}
+details.rfail>summary{display:flex;align-items:center;gap:8px;margin:14px 0 4px;padding:0 2px;list-style:none;color:var(--muted)}
+details.rfail>summary::-webkit-details-marker{display:none}
+details.rfail>summary::before{content:"▸";font-size:10px}details.rfail[open]>summary::before{content:"▾"}
+details.rfail>summary::after{content:"";flex:1;height:1px;background:var(--line)}
+details.rfail>summary i{font-style:normal;color:var(--ink2);font-variant-numeric:tabular-nums}
+.rank .why{color:#f3a3ae}
+.rmore{margin:6px 2px 0;color:var(--muted);font-size:11px}
+
 /* what Lightwell remembers between visits */
 #memNote{display:none;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;font-size:11px;color:var(--muted)}
 #memNote button{flex:none;padding:2px 9px;font-size:11px}

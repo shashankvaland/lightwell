@@ -28,6 +28,7 @@
       return `Using what you taught me${r.at ? ' on ' + new Date(r.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}: ${[r.brief ? 'your brief' : '', r.fixes ? `${r.fixes} corrected tower${r.fixes > 1 ? 's' : ''}` : ''].filter(Boolean).join(' and ')}. `
         + 'I won\'t ask again for a value you already gave.'; },
     note() { const el = $('memNote'); if (!el) return; const m = read();
+      const t = $('lt-brief'); if (t) t.classList.toggle('changed', JSON.stringify(LW.S) !== DEF);   // a dot on the Brief tab
       const n = m && m.fixes ? Object.keys(m.fixes).length : 0;
       el.style.display = m ? 'flex' : 'none';
       if (m) { el.innerHTML = `<span>${M.restored ? 'Restored from your last visit' : 'Remembered for next time'}: ${[m.brief ? 'this brief' : '', n ? `${n} corrected tower${n > 1 ? 's' : ''}` : ''].filter(Boolean).join(' and ')}.</span>`

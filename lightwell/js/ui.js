@@ -41,11 +41,12 @@
     Object.values(LW.views).forEach(v => v.setTowers());   // both views mark / rebuild their towers for the new list
     document.querySelectorAll('#dataMode button').forEach(x => { x.classList.toggle('on', x.dataset.m === LW.dataMode); x.setAttribute('aria-pressed', x.dataset.m === LW.dataMode); });
     const n = k => LW.B.filter(b => b.real[k]).length, chip = (v, t) => `<span><b>${v}</b> ${t}</span>`;
-    $('dataNote').innerHTML = (LW.real ? `<div class="dchips" title="Real data imported ${esc(LW.real.generated.replace('T', ' '))}">${chip(n('market'), 'CoStar towers')}${chip(n('aerial'), 'Vexcel counts')}${chip(n('interior'), 'Matterport scans')}${LW.real.counts && LW.real.counts.tenants ? chip(LW.real.counts.tenants, 'tenants') : ''}</div>`
-      : '<b>Real:</b> building footprints and heights (OpenStreetMap). No CoStar, Vexcel or Matterport data imported yet.<br>')
+    $('dataNote').innerHTML = (LW.real ? `<div class="dchips" title="Real data imported ${esc(LW.real.generated.replace('T', ' '))}">${chip(n('market'), 'CoStar towers')}${chip(n('interior'), 'Matterport scans')}${chip(n('aerial'), 'Vexcel counts')}${LW.real.counts && LW.real.counts.tenants ? chip(LW.real.counts.tenants, 'tenants') : ''}</div>`
+      : '<div>Real footprints and heights (OpenStreetMap). No CoStar, Vexcel or Matterport data imported yet.</div>')
+      + `<details><summary>${LW.dataMode === 'demo' ? 'Demo fill-in: missing values are simulated' : 'Real data only: nothing is simulated'}</summary><p>`
       + (LW.dataMode === 'demo' ? '<b>Demo fill-in:</b> towers without real records get SIMULATED values. Real names stay hidden next to simulated numbers.'
         : '<b>Real data only:</b> nothing is simulated. Missing values show as MISSING and any assumption the engine makes is stated.')
-      + ' Click any source tag to see the evidence.';
+      + ' Click any source tag to see the evidence.</p></details>';
     LW.tags.render();
   }
   document.querySelectorAll('#dataMode button').forEach(x => x.onclick = () => {
@@ -56,6 +57,15 @@
     if (sel && LW.byOsm.get(sel) && LW.scored) LW.onSelect(LW.byOsm.get(sel), false);
     LW.toast(LW.dataMode === 'demo' ? 'Demo fill-in on' : 'Real data only');
   });
+
+  // ---------- panel tabs: left = agent / ask / brief, right = list / tower ----------
+  LW.tab = function (side, name) {
+    const nav = $(side + 'Tabs'); if (!nav) return;
+    nav.querySelectorAll('button').forEach(x => { const on = x.dataset.tab === name; x.classList.toggle('on', on); x.setAttribute('aria-selected', on);
+      const p = $('tab-' + x.dataset.tab); if (p) p.classList.toggle('on', on); });
+  };
+  document.querySelectorAll('.tabs').forEach(nav => nav.querySelectorAll('button').forEach(x => x.onclick = () => LW.tab(nav.id.replace('Tabs', ''), x.dataset.tab)));
+  $('briefMini').onclick = () => LW.tab('left', 'brief');
 
   // ---------- recompute + paint ----------
   LW.analyzeAll = function () { LW.B.forEach(LW.analyze); LW.refresh(); };
@@ -75,21 +85,51 @@
     $('exports').style.display = 'flex';
   }
   const fsDot = s => s !== 'verify' ? `<span class="fs ${s}" title="${LW.SAFE_LABEL[s]}">●</span>` : '';
+  // When no tower passes, say why in one line and offer the one change that fixes it.
+  function noPass(pass) {
+    const el = $('nopass'); if (!LW.scored || pass.length) { el.style.display = 'none'; return; }
+    const S = LW.S, n = LW.B.length, has = t => LW.B.filter(b => b.why.some(w => w.startsWith(t))).length;
+    const opts = [];
+    if (S.require.length) opts.push({ n: has('missing real'), why: `${has('missing real')} of ${n} towers have no real ${S.require.map(k => LAYERS[k]).join(' + ')} data, and the brief requires it.`,
+      label: `Stop requiring real ${S.require.map(k => LAYERS[k]).join(' + ')} data`, go: () => ({ ...S, require: [] }) });
+    const cheap = LW.B.filter(b => b.why.length === 1 && b.why[0] === 'over cost cap').sort((a, c) => a.plan.cpu - c.plan.cpu)[0];
+    if (cheap) { const cap = Math.min(450000, Math.ceil(cheap.plan.cpu / 10000) * 10000);
+      if (cap >= cheap.plan.cpu) opts.push({ n: has('over cost cap'), why: `${has('over cost cap')} towers are over the ${money(S.cap)} cost cap; the closest is ${esc(cheap.label)} at ${money(cheap.plan.cpu)} a home.`,
+        label: `Raise the cap to ${money(cap)}`, go: () => ({ ...S, cap }) }); }
+    const small = LW.B.filter(b => b.why.length === 1 && b.why[0].startsWith('under ')).sort((a, c) => c.plan.homes - a.plan.homes)[0];
+    if (small) opts.push({ n: has('under '), why: `${has('under ')} towers have fewer than ${S.minHomes} homes; the largest is ${esc(small.label)} with ${fmt(small.plan.homes)}.`,
+      label: `Lower the minimum to ${fmt(small.plan.homes)} homes`, go: () => ({ ...S, minHomes: small.plan.homes }) });
+    opts.sort((a, c) => c.n - a.n);
+    el.style.display = 'block';
+    el.innerHTML = `<b>No tower passes this brief.</b>${opts.length ? opts[0].why : 'Open the Brief tab and relax one rule.'}`
+      + `<div class="btns">${opts.slice(0, 2).map((o, i) => `<button data-o="${i}" class="${i ? '' : 'primary'}">${o.label}</button>`).join('')}<button data-o="brief">Open the brief</button></div>`;
+    el.querySelectorAll('button').forEach(x => x.onclick = () => { if (x.dataset.o === 'brief') return LW.tab('left', 'brief');
+      LW.setBrief(opts[+x.dataset.o].go()); LW.analyzeAll(); toast('Brief changed: ' + LW.briefText(LW.S)); });
+  }
   function renderRanking() {
-    if (!LW.scored) return;
-    const list = [...LW.B].sort((a, b) => (b.pass - a.pass) || (b.score - a.score)).slice(0, 15);
-    $('ranking').innerHTML = list.map(b => `<div class="rank ${LW.selected === b ? 'sel' : ''}" data-i="${b.idx}" role="button" tabindex="0" aria-label="${esc(b.label)}: score ${b.score}, ${b.pass ? 'passes the brief' : 'does not pass the brief'}">
+    if (!LW.scored) { $('rtCount').textContent = ''; $('nopass').style.display = 'none'; return; }
+    const by = (a, b) => b.score - a.score, pass = LW.B.filter(b => b.pass).sort(by), fail = LW.B.filter(b => !b.pass).sort(by), SHOW = 12;
+    const rowOf = b => `<div class="rank ${LW.selected === b ? 'sel' : ''}" data-i="${b.idx}" role="button" tabindex="0" aria-label="${esc(b.label)}: score ${b.score}, ${b.pass ? 'passes the brief' : 'does not pass the brief'}">
       <span class="sc" style="background:${LW.hex(LW.scoreRGB(b.score))};color:${LW.scoreInk(b.score)}">${b.score}</span>
       <span class="nm"><b>${esc(b.label)}</b> · ${LW.eff(b, 'floors')} floors${b.real.market ? ' <span class="realdot" title="Real CoStar record">◆</span>' : ''} ${b.phantom ? '<span class="flag" title="Occupancy discrepancy to investigate">⚑</span>' : ''}${fsDot(b.plan.safety.status)}${Object.keys(b.overrides).length ? ' <span class="you" title="Includes your corrections">✎</span>' : ''}
-      <small>${b.pass ? fmt(b.plan.homes) + ' homes · ' + money(b.plan.cpu) + '/home' : esc(b.why.join(' · ')) + (b.plan.homes ? ' · ' + money(b.plan.cpu) + '/home' : '')}${b.plan.lw ? ' · lightwell' : ''}</small></span>${b.pass ? '<span class="okm" title="Passes the brief">✓</span>' : ''}</div>`).join('');
+      <small>${b.pass ? fmt(b.plan.homes) + ' homes · ' + money(b.plan.cpu) + '/home' : `<span class="why">${esc(b.why.join(' · '))}</span>` + (b.plan.homes ? ' · ' + money(b.plan.cpu) + '/home' : '')}${b.plan.lw ? ' · lightwell' : ''}</small></span>${b.pass ? '<span class="okm" title="Passes the brief">✓</span>' : ''}</div>`;
+    const open = !pass.length || (LW.selected && !LW.selected.pass) || LW.showAllRanks;
+    $('ranking').innerHTML = (pass.length ? `<div class="rgroup ok">Pass the brief <i>${pass.length}</i></div>` + pass.map(rowOf).join('') : '')
+      + (fail.length ? `<details class="rfail"${open ? ' open' : ''}><summary>Don't pass <i>${fail.length}</i></summary>${fail.slice(0, SHOW).map(rowOf).join('')}`
+        + `${fail.length > SHOW ? `<div class="rmore">The ${SHOW} highest scores of ${fail.length}. Click any tower on the map for the rest.</div>` : ''}</details>` : '');
+    $('rtCount').textContent = pass.length ? pass.length + ' pass' : '0 pass';
+    const d = $('ranking').querySelector('details.rfail'); if (d) d.ontoggle = () => { LW.showAllRanks = d.open; };
     $('ranking').querySelectorAll('.rank').forEach(el => { el.onclick = () => LW.onSelect(LW.B[+el.dataset.i], true);
       el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } }; });
+    noPass(pass);
   }
 
   // ---------- selection + card ----------
   LW.onSelect = function (b, fly) {
     const prev = LW.selected; LW.selected = b;
     LW.view.select(b, prev); renderRanking(); LW.tags.render();
+    $('rt-tower').textContent = b ? b.label : 'Tower'; $('cardEmpty').style.display = b ? 'none' : 'block';
+    if (b) LW.tab('right', 'tower'); else if (prev) LW.tab('right', 'list');
     if (!b) { $('card').style.display = 'none'; $('plateBox').style.display = 'none'; return; }
     if (b.plan == null) LW.analyze(b);
     renderCard(b); if ($('plateBox').style.display === 'block') openPlate(b);
@@ -584,6 +624,7 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
     $('dayOn').checked = LW.S.neighbours !== false; $('dayLim').value = LW.S.dayLim; $('dayL').textContent = LW.S.dayLim + '°'; $('dayStrict').checked = !!LW.S.dayStrict;
     document.querySelectorAll('#require input').forEach(x => x.checked = LW.S.require.includes(x.value));
     $('dL').textContent = LW.S.u + ' ft'; $('cL').textContent = money(LW.S.cap); $('briefText').textContent = LW.briefText(LW.S);
+    $('briefMiniTxt').textContent = LW.briefText(LW.S);
   };
   function readBrief() {
     LW.setBrief({ u: +$('dist').value, cap: +$('cap').value * 1000, allowLW: $('lw').checked, minHomes: Math.max(1, Math.round(+$('minHomes').value || 1)),
