@@ -8,7 +8,7 @@ Before submitting:
   - Elevator pitch (200 characters): Empty offices, meet your new tenants. Lightwell's AI agents test every floor of
     Houston's empty towers for daylight, fire, rent and Texas law, and find which can become homes.
   - Built with: python, fastapi, langchain, deepagents, claude, anthropic, javascript, maplibre, cesium,
-    google-maps, matterport, costar, openstreetmap, docker, digitalocean, mongodb
+    google-maps, matterport, costar, openstreetmap, docker, mongodb
   - Try it out: the live link and https://github.com/shashankvaland/lightwell
   - Thumbnail: export it from the Claude Design canvas.
 - Tracks to tick:
@@ -16,7 +16,7 @@ Before submitting:
   - CoStar
   - LangChain deepagents
   - Amazon Practical AI
-  - MLH DigitalOcean, MongoDB Atlas, GoDaddy Registry domain, .Tech domain
+  - MLH: MongoDB Atlas, GoDaddy Registry domain, DEV Writing Challenge (and Vultr, if hosted there)
   - Peri, only after the interview
   - Arlequin, if the team decides to enter
 -->
@@ -194,7 +194,7 @@ The 60% sits inside the 53–75% range published studies report for building reu
 **The views:** MapLibre GL for the 3D map; CesiumJS with Google Photorealistic 3D Tiles for the real city with real
 sun shadows; Matterport 3D tours; Google Aerial View flyovers.
 
-**Live on the web:** one Docker image on **DigitalOcean** serves the site and the agent API. **MongoDB Atlas** stores
+**Live on the web:** the site runs on GitHub Pages, and one Docker image serves the agent API. **MongoDB Atlas** stores
 every run as the team's shared history, and an Atlas aggregation shows which towers keep winning across everyone's
 briefs.
 

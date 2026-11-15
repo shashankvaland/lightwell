@@ -13,10 +13,14 @@ open. Nothing here is a claim the app cannot back up on screen.
 | Amazon: Best Practical AI Innovation | ready | the pitch |
 | Peri: Forward Deployed | **not eligible yet** | one real interview, then fill `lightwell/consult.js` |
 | Arlequin: AI-Driven Forensics | weak fit, honest entry possible | decide as a team whether to enter |
-| MLH: Best Use of DigitalOcean | ready to deploy | create the app from `.do/app.yaml` ([DEPLOY.md](DEPLOY.md)) |
-| MLH: Best Use of MongoDB Atlas | built (Team history) | free Atlas cluster, `MONGODB_URI` in `.env` and in DigitalOcean |
-| MLH: Best Domain Name from GoDaddy Registry | shortlist ready | register one (sleepatwork.co) and point it at the app |
-| MLH: Best .Tech Domain Name | shortlist ready | register lightwellhouston.tech |
+| MLH: Best Use of MongoDB Atlas | built (Team history) | free Atlas cluster, `MONGODB_URI` in `.env` |
+| MLH: Best Domain Name from GoDaddy Registry | shortlist ready | register spreadsheetstobedsheets.co, point it at GitHub Pages |
+| MLH: DEV Writing Challenge | text ready | publish the Devpost story on dev.to |
+| MLH: Best Use of Vultr | optional | host the Docker image on Vultr (same Dockerfile) |
+
+HackPrinceton F26's MLH list (mlh.com/events/hackprinceton-fall-2026/prizes) has 8 prizes: SpaceXSI, Gemini API,
+Solana, Tiger Data, Vultr, DEV Writing Challenge, MongoDB Atlas, GoDaddy Registry. DigitalOcean and .Tech are **not**
+on it, so the DigitalOcean files are only one hosting option.
 
 ## Best Sustainability Hack
 
