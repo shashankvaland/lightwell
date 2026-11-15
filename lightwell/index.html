@@ -30,8 +30,14 @@
   <textarea id="prompt">Find offices downtown I can turn into homes for under $300k a home.</textarea>
   <div class="btns"><button id="run" class="primary" disabled>Loading…</button></div>
   <div id="mode" class="mode">Checking for the agent backend…</div>
-  <div id="team" title="The agent team: lights up while each sub-agent works"><span data-a="planner">Planner</span><span data-a="market">Market</span><span data-a="feas">Feasibility</span><span data-a="policy">Policy</span><span data-a="deals">Deals</span><span data-a="red">Red team</span></div>
+  <div id="team" title="The agent team: lights up while each sub-agent works"><span data-a="planner">Planner</span><span data-a="market">Market</span><span data-a="scout">Scout</span><span data-a="feas">Feasibility</span><span data-a="policy">Policy</span><span data-a="deals">Deals</span><span data-a="red">Red team</span></div>
   <div id="log"></div>
+
+  <h2>Ask Lightwell</h2>
+  <div id="chat" aria-live="polite"></div>
+  <div class="chips" id="askChips"></div>
+  <form id="askForm" class="askbar"><input id="askQ" type="text" autocomplete="off" placeholder="Ask about any tower, the data gaps, or a what-if…" aria-label="Ask Lightwell"><button class="primary" type="submit">Ask</button></form>
+  <div id="askMode" class="mode"></div>
 
   <h2>Brief (live)</h2>
   <div class="note brief" id="briefText"></div>
@@ -147,9 +153,11 @@
 <script src="js/engine.js"></script>
 <script src="js/data.js"></script>
 <script src="js/shuffle.js"></script>
+<script src="js/scout.js"></script>
 <script src="js/views.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/agent.js"></script>
+<script src="js/ask.js"></script>
 <script src="js/streetview.js"></script>
 <script src="js/intro.js"></script>
 <script>LW.start().then(() => LW.intro.maybe());</script>

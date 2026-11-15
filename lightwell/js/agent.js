@@ -6,10 +6,10 @@
   const LW = window.LW, $ = id => document.getElementById(id);
   const WHO = { Planner: '#f5b942', Map: '#57c3bd', CoStar: '#b48ae0', Vexcel: '#57c3bd', Matterport: '#8fb0ff',
     Feasibility: '#e0b35a', Safety: '#ff9f6b', Forensics: '#ef8796', Review: '#c7cdda', Agent: '#f5b942', Tool: '#8f9ab0', You: '#5fd38a',
-    Policy: '#7fd1ff', Deals: '#5fd38a', 'Red team': '#ef5d6f', Daylight: '#ffd27a' };
+    Policy: '#7fd1ff', Deals: '#5fd38a', 'Red team': '#ef5d6f', Daylight: '#ffd27a', Scout: '#9be37a', Lightwell: '#f5b942' };
   // The agent team strip: which sub-agent is working right now.
   const TEAM = { Planner: 'planner', Review: 'planner', Map: 'planner', CoStar: 'market', Vexcel: 'market', Forensics: 'market',
-    Matterport: 'feas', Feasibility: 'feas', Safety: 'feas', Policy: 'policy', Deals: 'deals', 'Red team': 'red', Daylight: 'feas' };
+    Matterport: 'feas', Feasibility: 'feas', Safety: 'feas', Policy: 'policy', Deals: 'deals', 'Red team': 'red', Daylight: 'feas', Scout: 'scout' };
   function pulse(who) {
     const el = document.querySelector(`#team [data-a="${TEAM[who]}"]`); if (!el) return;
     document.querySelectorAll('#team .on').forEach(x => x.classList.remove('on'));
@@ -73,7 +73,7 @@
 
   function reset() {
     $('log').innerHTML = ''; document.querySelectorAll('#team span').forEach(x => x.classList.remove('on', 'used'));
-    if (LW.showMoves) LW.showMoves(null, null, true); LW.scored = false; LW.flagsShown = false; LW.reviewed = null;
+    if (LW.showMoves) LW.showMoves(null, null, true); if (LW.clearEstimates) LW.clearEstimates(); LW.scored = false; LW.flagsShown = false; LW.reviewed = null;
     LW.B.forEach(b => { b.score = null; b.plan = null; }); LW.B.forEach(b => LW.view.paint(b)); LW.view.setFlags([]);
   }
   async function reveal() {
@@ -110,12 +110,21 @@
     const n = k => B.filter(b => b.real[k]).length, sim = k => n(k) ? `${n(k)} imported real, ${B.length - n(k)} <i>${LW.dataMode === 'demo' ? 'simulated' : 'missing'}</i>`
       : `<i>${LW.dataMode === 'demo' ? 'Simulated' : 'Missing'}</i> for all towers`;
     LW.log('CoStar', `Leasing and age records: ${sim('market')}.`); await sleep(500);
+    const est = LW.scoutGaps(B);
+    if (est.length) {
+      LW.applyEstimates(est); const ref = new Set(est.flatMap(e => e.neighbours.map(x => x.id))).size, med = est.filter(e => e.confidence === 'medium').length;
+      LW.log('Scout', `${est.length} towers have no CoStar record. Estimated percent leased from ${ref} comparable CoStar towers (nearest and most similar in height)`
+        + `${ref ? ', pulled toward the downtown average' : ''}: ${med} medium, ${est.length - med} low confidence. Tagged ESTIMATE; they still don't count as real data.`); await sleep(600);
+    }
     LW.log('Vexcel', `Parking counts from aerial captures: ${sim('aerial')}.${S.useParking ? '' : ' The brief ignores parking.'}`); await sleep(500);
     LW.log('Matterport', n('interior') ? `Floor plates from ${n('interior')} real scans; the rest use their real footprint and an assumed core.`
       : 'No scans loaded: plates from real footprints, cores assumed.'); await sleep(500);
     await reveal();
     const costOK = B.filter(b => b.plan.cpu <= S.cap && b.plan.homes >= S.minHomes);
     LW.log('Feasibility', `Ran the ${S.u} ft daylight test on every floor plate. ${costOK.length} towers fit under the cap with ${S.minHomes}+ homes; lightwells rescue ${costOK.filter(b => b.plan.lw).length}.`); await sleep(700);
+    const pri = LW.dataPriority(B, 5);
+    LW.log('Scout', pri.length ? `Ask CoStar next about ${pri.slice(0, 3).map(x => x.id).join(', ')}: ${pri[0].id} ${pri[0].reasons.slice(0, 2).join('; ')}.`
+      : 'No missing value would change a decision: no CoStar request needed for now.'); LW.dataRequests = pri; await sleep(600);
     const fails = costOK.filter(b => b.plan.safety.status === 'fail'), checks = B.filter(b => b.pass && b.plan.safety.status === 'check');
     LW.log('Safety', `Preliminary fire screen (estimates, not a code review): ${fails.length} likely blockers among cost-passing towers; ${checks.length} need design work.`); await sleep(700);
     // Daylight X-ray: the passing tower whose windows face neighbouring buildings the most
@@ -214,7 +223,8 @@
           if (ev.stage === 'scored' && !LW.scored) await reveal();
           if (ev.stage === 'flags') { LW.flagsShown = true; LW.refresh(); }
           const b = ev.ids && ev.ids.length ? LW.B.find(x => x.id === ev.ids[0]) : null; if (b) LW.onSelect(b, true);
-        } else if (ev.type === 'moves') { LW.showMoves(ev.plan, null); }
+        } else if (ev.type === 'estimates') { LW.applyEstimates(ev.items); if (LW.scored) LW.B.forEach(LW.analyze); }
+        else if (ev.type === 'moves') { LW.showMoves(ev.plan, null); }
         else if (ev.type === 'challenge') { if (LW.movePlan && LW.movePlan.tower === ev.tower) LW.showMoves(LW.movePlan, ev, true); }
         else if (ev.type === 'brief') { LW.setBrief(ev.brief); if (LW.scored) LW.analyzeAll(); }
         else if (ev.type === 'ask') {
@@ -265,4 +275,5 @@
     agent.running = false; $('run').disabled = false; LW.refresh();
   };
   $('run').onclick = agent.run;
+  Object.assign(agent, { backendUrl, payload, reveal, sleep });
 })();

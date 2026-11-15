@@ -16,3 +16,4 @@ tests/js_results.json
 
 # local tool settings
 .claude/
+tests/js_scout.json

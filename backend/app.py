@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 import env  # noqa: F401  (loads the project's .env before the agent reads its settings)
-from agent import MODEL, Session, run_llm, run_scripted
+from agent import MODEL, Session, run_ask, run_llm, run_scripted
 
 app = FastAPI(title="Lightwell backend")
 # Local development only: the page may be opened from disk (origin "null") or a local server.
@@ -51,18 +51,31 @@ async def answer(request: Request):
     return {"ok": True}
 
 
+@app.post("/api/ask")
+async def ask(request: Request):
+    """Ask Lightwell: one question about the towers, answered by Claude with the agent's tools (needs an Anthropic key;
+    without one the page answers in the browser). Streams tool steps, then {"type": "answer", text, ids, ...}."""
+    if not llm_available():
+        raise HTTPException(503, "No Anthropic key: the page answers questions in the browser.")
+    return stream_session(Session(await request.json()), run_ask, final=False)
+
+
 @app.post("/api/run")
 async def run(request: Request):
     payload = await request.json()
-    s = Session(payload)
-    SESSIONS[s.id] = s
     use_llm = llm_available() and not payload.get("scripted")
+    return stream_session(Session(payload), run_llm if use_llm else run_scripted)
+
+
+def stream_session(s: Session, fn, final=True):
+    SESSIONS[s.id] = s
 
     def work():
         try:
             s.events.put({"type": "session", "session": s.id})
-            run_llm(s) if use_llm else run_scripted(s)
-            s.events.put(s.result())
+            fn(s)
+            if final:
+                s.events.put(s.result())
         except Exception as e:  # report the failure to the page instead of hanging the stream
             traceback.print_exc()
             s.events.put({"type": "error", "message": f"{type(e).__name__}: {e}"})
