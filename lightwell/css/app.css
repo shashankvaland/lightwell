@@ -221,3 +221,9 @@ a.btnlink:hover{background:rgba(255,255,255,.12)}
 .dgHint{margin-top:4px;color:var(--gold);font-size:11.5px}
 @media (max-width:980px){#designBox{max-width:none;min-width:0;width:calc(100vw - 16px);bottom:auto;top:56px;max-height:calc(56vh - 64px)}
   .dgMain,.dgCols{grid-template-columns:1fr}}
+
+.dgMerged{color:var(--ink);background:rgba(245,185,66,.1);border-left:2px solid var(--gold);padding:5px 8px;border-radius:4px}
+.dgSel{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;font-size:12px;color:var(--ink);
+  background:rgba(245,185,66,.1);border:1px solid rgba(245,185,66,.4);border-radius:8px;padding:6px 8px}
+.dgSel.bad{border-color:rgba(239,93,111,.6);background:rgba(239,93,111,.1)}
+.dgSel button{padding:4px 9px;margin-left:4px}.dgHint button{padding:2px 8px;font-size:11px;margin-left:4px}

@@ -44,18 +44,42 @@
 
   // ---------- one home from the floor layout, in its own frame ----------
   // s0 / s1: the home also has glass on its u = 0 / u = a end (a corner home on the outside wall).
-  H.context = function (b, L, i) {
-    const un = L && L.units[i]; if (!un) return null;
-    const r = un.r, hor = un.win === 'n' || un.win === 's';
+  H.contextRect = function (b, r, win, court) {
+    const hor = win === 'n' || win === 's';
     const a = hor ? r[2] - r[0] : r[3] - r[1], d = hor ? r[3] - r[1] : r[2] - r[0];
     let s0 = false, s1 = false;
-    if (!un.court && hor) {
+    if (!court && hor) {
       const left = r[0] < 0.5, right = r[2] > b.W - 0.5;
-      if (un.win === 'n') { s0 = left; s1 = right; } else { s0 = right; s1 = left; }
+      if (win === 'n') { s0 = left; s1 = right; } else { s0 = right; s1 = left; }
     }
-    return { i, a, d, win: un.win, court: !!un.court, s0, s1, sqft: a * d, r: r.slice() };
+    return { a, d, win, court: !!court, s0, s1, sqft: a * d, r: r.slice() };
+  };
+  H.context = function (b, L, i) {
+    const un = L && L.units[i]; if (!un) return null;
+    return { i, ...H.contextRect(b, un.r, un.win, un.court) };
   };
   H.sig = r => r.map(x => Math.round(x * 10) / 10).join(',');   // identifies a home across re-renders
+
+  // ---------- merge neighbouring homes into one bigger home ----------
+  // Homes can merge when they sit side by side on the same window wall and reach the same depth, so together they
+  // are still one rectangle with glass on one side and the corridor on the other. Returns { ok, r, win, court, n }
+  // or { ok: false, reason }. Pure: the floor layout is not changed.
+  H.MAX_MERGE = 3;
+  H.merge = function (L, idxs) {
+    const us = [...new Set(idxs)].map(i => L && L.units[i]).filter(Boolean);
+    if (us.length < 2) return { ok: false, reason: 'Pick at least two neighbouring homes on the same wall.' };
+    if (us.length > H.MAX_MERGE) return { ok: false, reason: `Merge at most ${H.MAX_MERGE} homes into one.` };
+    const win = us[0].win, court = !!us[0].court;
+    if (us.some(u => u.win !== win || !!u.court !== court)) return { ok: false, reason: "These homes are on different window walls, so they can't become one apartment." };
+    const hor = win === 'n' || win === 's', d0 = hor ? 1 : 0, d1 = hor ? 3 : 2, s0 = hor ? 0 : 1, s1 = hor ? 2 : 3, tol = 0.05;
+    if (us.some(u => Math.abs(u.r[d0] - us[0].r[d0]) > tol || Math.abs(u.r[d1] - us[0].r[d1]) > tol))
+      return { ok: false, reason: 'These homes reach different depths (one is cut back for the core), so together they are not one rectangle.' };
+    us.sort((p, q) => p.r[s0] - q.r[s0]);
+    for (let k = 1; k < us.length; k++) if (Math.abs(us[k].r[s0] - us[k - 1].r[s1]) > tol)
+      return { ok: false, reason: 'These homes are not side by side. Pick homes that touch, on the same wall.' };
+    const r = us[0].r.slice(); r[s1] = us[us.length - 1].r[s1];
+    return { ok: true, r, win, court, n: us.length };
+  };
 
   // ---------- shared walls ----------
   function shared(p, q) {
@@ -233,6 +257,11 @@
     const wet = rooms.filter(x => WET.has(x.type)), atC = wet.filter(x => x.r[3] > c.d - EPS);
     return wet.filter(x => !atC.includes(x) && !atC.some(y => shared(x.r, y.r) >= 2)).length;
   }
+  // right-sized: a 1,000 sq ft studio or a 600 sq ft 2-bed is a poor use of the space (1 = typical size for its type)
+  function sizeFit(rooms, c) {
+    const A = c.a * c.d, [lo, hi] = H.SIZE[Math.min(3, rooms.filter(x => x.type === 'bed').length)];
+    return A < lo ? A / lo : A > hi ? Math.max(0, 1 - (A - hi) / hi) : 1;
+  }
   function score(rooms, c) {
     const A = c.a * c.d, ar = x => area(x.r), by = t => rooms.filter(x => x.type === t);
     const hab = rooms.filter(x => HAB.has(x.type)), habA = sum(hab.map(ar));
@@ -244,8 +273,7 @@
       const k = Math.max(W(x), Dp(x)) / Math.min(W(x), Dp(x)); return k <= 1.8 ? 1 : Math.max(0, 1 - (k - 1.8) / 1.5); }));
     const circ = sum(rooms.filter(x => x.type === 'hall' || x.type === 'entry' || x.type === 'storage').map(ar)) / A;
     const corner = (c.s0 || c.s1) && liv.some(x => (c.s0 && x.r[0] < EPS) || (c.s1 && x.r[2] > c.a - EPS)) ? 1 : 0;
-    // right-sized: a 1,000 sq ft studio or a 600 sq ft 2-bed is a poor use of the space
-    const [lo, hi] = H.SIZE[Math.min(3, beds.length)], fit = A < lo ? A / lo : A > hi ? Math.max(0, 1 - (A - hi) / hi) : 1;
+    const fit = sizeFit(rooms, c);
     const s = 0.2 * Math.min(1, habA / A / 0.7) + 0.1 * glass + 0.12 * bedQ + 0.12 * livQ + 0.08 * shape
       + 0.1 * (wetShared(rooms) ? 1 : 0.4) + 0.08 * (1 - Math.min(1, circ / 0.18)) + 0.2 * fit + 0.05 * corner - 0.04 * wetAway(rooms, c);
     return Math.round(100 * clamp(s, 0, 1));
@@ -292,7 +320,7 @@
       for (const m of [false, true]) {
         const rs = m ? mirror(rooms, c.a) : rooms; tried++;
         if (H.check(rs, c, o0).length) continue;
-        all.push({ ...meta, rooms: rs, score: score(rs, c) });
+        all.push({ ...meta, rooms: rs, score: score(rs, c), fit: sizeFit(rs, c) });
       }
     };
     add(studio(c.a, c.d, o0), { kind: 'studio', beds: 0, baths: 1, kitchen: 'back', den: false });
@@ -308,9 +336,11 @@
     for (const p of want) { const k = `${p.beds}|${p.baths}|${p.kitchen}|${p.den}|${p.pos === 'split'}`; if (!best.has(k) || best.get(k).score < p.score) best.set(k, p); }
     const ranked = [...best.values()].sort((x, y) => y.score - x.score || x.beds - y.beds);
     // variety: the best plan for each bedroom count first, then the next best plans
-    const pick = [], beds = new Set();
-    for (const p of ranked) if (!beds.has(p.beds)) { beds.add(p.beds); pick.push(p); }
-    for (const p of ranked) if (pick.length < 5 && !pick.includes(p)) pick.push(p);
+    // (a home type far from its usual size, like a 1,500 sq ft studio, is skipped here unless nothing else fits)
+    const pick = [], beds = new Set(), sized = ranked.some(p => p.fit >= 0.6);
+    for (const p of ranked) if (!beds.has(p.beds) && (!sized || p.fit >= 0.6)) { beds.add(p.beds); pick.push(p); }
+    for (const p of ranked) if (pick.length < 5 && !pick.includes(p) && (!sized || p.fit >= 0.6)) pick.push(p);
+    for (const p of ranked) if (pick.length < 3 && !pick.includes(p)) pick.push(p);   // at least 3 options when possible
     const options = pick.slice(0, 5).sort((x, y) => y.score - x.score).map(p => ({ ...p, ...describe(p, c, o0) }));
     if (options.length) {
       const top = Math.max(...options.map(p => p.score)), cheap = Math.min(...options.map(p => p.cost)), most = Math.max(...options.map(p => p.beds));

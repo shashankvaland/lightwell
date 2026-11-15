@@ -57,7 +57,7 @@ attacks the plan before you see it. The app opens with a short, sourced screen o
 |---|---|
 | Ranked 3D map coloured by conversion score | Map / Photoreal 3D toggle |
 | Floor-plate test-fit with homes, core, lightwell and escape route | Floor plate panel |
-| **Home designer:** click any home on the floor plate (or a floor in the card's stack or the 3D floor views) for 3-5 concept apartment plans: rooms, furniture, sizes, rule checks, wet-wall and cost notes; filter by bedrooms, baths, work nook, accessible bath, or describe it in words; save a plan for a run of floors | Building card → *Design homes* · Floor plate |
+| **Home designer:** click any home on the floor plate (or a floor in the card's stack or the 3D floor views) for 3-5 concept apartment plans: rooms, furniture, sizes, rule checks, wet-wall and cost notes; filter by bedrooms, baths, work nook, accessible bath, or describe it in words; save a plan for a run of floors. **Shift+click** (or *Select several*) 2-3 neighbouring homes on the same wall and *Merge and design* to plan them as one bigger family home | Building card → *Design homes* · Floor plate |
 | Daylight X-ray: floors coloured by how much sky their windows see, lines to the blocking buildings, sun shadows | Daylight toggle · Photoreal 3D sun bar |
 | Live constraints (window distance, cost cap, lightwell on/off) | Left panel |
 | Editable assumptions (cost, carbon, travel limit) | Left panel → Assumptions |
@@ -100,7 +100,7 @@ switches to the built-in offline agent and the badge says so.
 ```bash
 node tests/parity.mjs          # browser engine on all 58 towers -> tests/js_results.json
 python -m pytest tests -q      # geometry, brief, missing data, JS/Python parity, backend review-and-replan
-node tests/homes.mjs           # home designer: every plan on every home of every tower passes the room rules
+node tests/homes.mjs           # home designer: every plan on every home (and every merge) of every tower passes the rules
 ```
 
 **Home designer** (`lightwell/js/homes.js` + `lightwell/js/designer.js`). Each home on the floor plate is a rectangle
@@ -110,6 +110,9 @@ size, bath under 5 × 7.5 ft, a room you can't reach, no bath off the hall), sco
 room sizes, right size for the type, shared wet wall, plumbing on the corridor side) and shows 3-5 different ones.
 It reads the plate, core, daylight and empty-floor data and writes nothing back: the score, the agent's review, the
 memo and the CSV are unchanged. Saved designs last for the browser session. These are concept plans, not drawings.
+Merging: homes merge only when they sit side by side on the same window wall and reach the same depth, so together
+they are still one rectangle (homes on different walls, not touching, or cut back for the core are refused with the
+reason). Most single homes are 22-30 ft wide, too narrow for a 2-bed; merging two gives family homes.
 
 **4. Photoreal 3D (optional)**
 Copy `lightwell/config.example.js` to `lightwell/config.js` (also where you change `BACKEND_URL`), then add **one** of these:
