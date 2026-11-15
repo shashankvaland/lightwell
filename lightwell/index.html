@@ -93,6 +93,12 @@
   <iframe id="mpFrame" title="Matterport 3D tour" allow="xr-spatial-tracking; fullscreen" allowfullscreen></iframe>
 </div>
 
+<div id="avBox" role="dialog" aria-labelledby="avTitle">
+  <header><div><b id="avTitle">Aerial flyover</b><small id="avNote"></small></div><button id="avClose">Close</button></header>
+  <div id="avStage"><video id="avVideo" controls muted autoplay loop playsinline></video><div id="avMsg"></div></div>
+  <footer><span translate="no">Google Maps</span><span>Aerial View</span><span id="avCap"></span></footer>
+</div>
+
 <div id="intro" role="dialog" aria-modal="true" aria-labelledby="introTitle"><div class="ibox">
   <div class="kicker">Houston · 2026</div>
   <h2 id="introTitle">Texas now lets empty offices become homes. Houston has the offices.</h2>

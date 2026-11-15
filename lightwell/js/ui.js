@@ -193,7 +193,7 @@
       <details class="cl"><summary>Before a site visit (${checklist.length})</summary><ol>${checklist.map(x => `<li>${esc(x.text)}${x.from ? ` <small>· ${esc(x.from)}</small>` : ''}</li>`).join('')}</ol></details>
       <div class="btns"><button id="orbit">Drone orbit</button><button id="street">3D street level</button>
         <button id="sview" class="sv">Street View</button></div>
-      ${(b.models || []).length ? `<div class="btns"><button id="tour" class="sv" title="CoStar's Matterport scans of this building">3D tour inside · Matterport (${b.models.length})</button></div>` : ''}
+      ${(b.models || []).length || (b.real.market && b.address) ? `<div class="btns">${(b.models || []).length ? `<button id="tour" class="sv" title="CoStar's Matterport scans of this building">3D tour inside (${b.models.length})</button>` : ''}${b.real.market && b.address ? '<button id="aerial" class="sv" title="Google Aerial View: a cinematic flyover of this building">Aerial flyover</button>' : ''}</div>` : ''}
       <div class="btns"><button id="showPlate">Floor plate</button><button id="fix">Correct data</button></div>
       <div id="fixForm" style="display:none">
         <label class="row">Leased (%) <input id="fRep" type="number" min="0" max="100" placeholder="unknown" value="${rep == null ? '' : Math.round(rep * 100)}"></label>
@@ -209,6 +209,7 @@
     $('orbit').onclick = () => { $('plateBox').style.display = 'none'; LW.view.orbit(b); };
     $('sview').onclick = () => LW.streetView.open(b);
     if ($('tour')) $('tour').onclick = () => LW.tour(b);
+    if ($('aerial')) $('aerial').onclick = () => LW.aerial(b);
     if ($('mvFast')) { $('mvFast').onclick = () => planFor(b, 'fast'); $('mvEmpty').onclick = () => planFor(b, 'empty'); }
     if ($('mvClear')) $('mvClear').onclick = () => LW.showMoves(null);
     $('card').querySelectorAll('[data-go]').forEach(a => a.onclick = e => { e.preventDefault(); const t = LW.B.find(x => x.id === a.dataset.go); if (t) LW.onSelect(t, true); });
@@ -584,6 +585,7 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
   // A plain embed with no SDK key in the address: with a key, Matterport waits for an SDK connection the page never makes.
   LW.tour = function (b) {
     const ms = b.models || []; if (!ms.length) return;
+    if ($('avBox').style.display === 'flex') closeAerial();   // one panel at a time
     const show = id => { const m = encodeURIComponent(id);
       $('mpFrame').src = `https://my.matterport.com/show/?m=${m}&play=1&qs=1`; $('mpOpen').href = `https://my.matterport.com/show/?m=${m}`; };
     $('mpTitle').textContent = `${b.label} · 3D tour`;
@@ -593,6 +595,67 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
     show(ms[0]); $('mpBox').style.display = 'flex';
   };
   $('mpClose').onclick = () => { $('mpBox').style.display = 'none'; $('mpFrame').src = 'about:blank'; };
+
+  // ---------- Google Aerial View: a cinematic flyover of a real (CoStar) building ----------
+  // The free metadata check runs first; the billed lookup (the video links) only when a video exists and is about to
+  // play. Google's rules: video links expire and are never stored (look them up each time); video ids may be stored,
+  // so a requested render is remembered. The "Google Maps" attribution stays on the panel.
+  const AV = 'https://aerialview.googleapis.com/v1/videos:';
+  const avIds = { get(k) { try { return localStorage.getItem('lightwell.aerialVideo.' + k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem('lightwell.aerialVideo.' + k, v); } catch (e) { /* private mode */ } } };
+  async function avCall(method, params, body) {
+    const q = new URLSearchParams({ key: (window.LIGHTWELL_CONFIG || {}).GOOGLE_MAPS_API_KEY || '', ...params });
+    const r = await fetch(AV + method + '?' + q, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);
+    return { http: r.status, ...(await r.json().catch(() => ({}))) };
+  }
+  function closeAerial() {
+    const v = $('avVideo'); v.pause(); v.removeAttribute('src'); v.removeAttribute('poster'); v.load();
+    $('avBox').style.display = 'none'; LW.aerialRun = null;
+  }
+  LW.aerial = async function (b) {
+    const address = `${b.address}, Houston, TX`, v = $('avVideo'), run = (LW.aerialRun = {});
+    const say = (text, act) => {
+      v.pause(); v.style.display = 'none'; $('avMsg').style.display = 'flex';
+      $('avMsg').innerHTML = `<span>${esc(text)}</span>` + (act ? `<button class="primary">${esc(act.label)}</button>` : '');
+      if (act) $('avMsg').querySelector('button').onclick = act.go;
+    };
+    if ($('mpBox').style.display === 'flex') $('mpClose').onclick();   // one panel at a time
+    $('avTitle').textContent = `${b.label} · aerial flyover`; $('avNote').textContent = `Google Aerial View of ${b.address}, Houston`;
+    $('avCap').textContent = ''; $('avBox').style.display = 'flex';
+    if (!(window.LIGHTWELL_CONFIG || {}).GOOGLE_MAPS_API_KEY) return say('Add GOOGLE_MAPS_API_KEY to lightwell/config.js to see the flyover.');
+    say(`Looking for Google's flyover of this address…`);
+    try {
+      const id = avIds.get(b.costarId);
+      let m = await avCall('lookupVideoMetadata', id ? { videoId: id } : { address });   // free
+      if (id && m.http === 404) m = await avCall('lookupVideoMetadata', { address });
+      if (LW.aerialRun !== run) return;   // closed, or another tower opened meanwhile
+      if (m.state === 'ACTIVE' && m.videoId) {
+        avIds.set(b.costarId, m.videoId);
+        const r = await avCall('lookupVideo', { videoId: m.videoId });   // billed, only now that the video exists
+        if (LW.aerialRun !== run) return;
+        const u = r.uris || {}, mp4 = (u.MP4_HIGH || u.MP4_MEDIUM || u.MP4_LOW || {}).landscapeUri;
+        if (!mp4) return say(`Google returned no video file (${(r.error && r.error.message) || r.state || r.http}).`);
+        const cd = m.captureDate;
+        $('avCap').textContent = (cd ? `· captured ${new Date(cd.year, (cd.month || 1) - 1).toLocaleString('en-US', { month: 'short', year: 'numeric' })}` : '')
+          + (m.duration ? ` · ${parseFloat(m.duration)} s` : '');
+        v.setAttribute('aria-label', `This is a photorealistic aerial view of ${address} provided by Google Maps.`);
+        v.poster = (u.IMAGE || {}).landscapeUri || ''; v.src = mp4;
+        $('avMsg').style.display = 'none'; v.style.display = 'block'; v.play().catch(() => {});
+        return;
+      }
+      if (m.state === 'PROCESSING') return say('Google is still rendering this flyover (usually 1 to 3 hours after it was requested). Check back later.');
+      if (m.state === 'FAILED' || /no 3d imagery/i.test((m.error || {}).message || '')) return say('Google has no 3D imagery for this address, so there is no flyover.');
+      if (m.http === 404) return say('No flyover of this address yet. Google renders one for free in about 1 to 3 hours.', { label: 'Ask Google to render it', go: async () => {
+        say('Asking Google to render it…');
+        const r = await avCall('renderVideo', {}, { address });   // free
+        if (r.metadata && r.metadata.videoId) avIds.set(b.costarId, r.metadata.videoId);
+        if (r.state === 'ACTIVE') return LW.aerial(b);
+        say(r.error ? `Google could not start a render: ${r.error.message}` : 'Requested. Google renders it in about 1 to 3 hours; open the flyover again later.');
+      } });
+      say(`Google Aerial View error ${m.http}: ${(m.error || {}).message || 'unknown'}` + (m.http === 403 ? ' Enable the Aerial View API for this key in Google Cloud Console.' : ''));
+    } catch (e) { if (LW.aerialRun === run) say(`Could not reach Google Aerial View (${e.message}).`); }
+  };
+  $('avClose').onclick = closeAerial;
 
   // ---------- Daylight X-ray view toggle ----------
   LW.dayViewOn = false;

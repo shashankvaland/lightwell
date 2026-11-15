@@ -4,6 +4,8 @@ window.LIGHTWELL_CONFIG = {
   //  - a Google Maps Platform key with the Map Tiles API enabled, or
   //  - a Cesium ion access token (ion serves the same Google tiles).
   // Leave both empty to use the built-in 3D view of the OpenStreetMap buildings.
+  // The Google key also plays Google Aerial View flyovers of the CoStar towers (enable the Aerial View API) and the
+  // in-app Street View (Maps JavaScript API). Its Google Cloud project needs billing turned on.
   GOOGLE_MAPS_API_KEY: "",
   CESIUM_ION_TOKEN: "",
 

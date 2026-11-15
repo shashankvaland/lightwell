@@ -140,6 +140,18 @@ a.btnlink:hover{background:rgba(255,255,255,.12)}
 #mpBox select{font:inherit;color:var(--ink);background:#141c2d;border:1px solid var(--line);border-radius:6px;padding:5px 6px}
 #mpFrame{flex:1;min-height:0;width:100%;border:0;background:#0e1524}
 @media (max-width:980px){#mpBox{left:8px;right:8px;top:56px;bottom:46vh}}
+/* Google Aerial View flyover panel */
+#avBox{position:fixed;left:350px;right:350px;top:60px;bottom:14px;z-index:4;display:none;flex-direction:column;
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+#avBox header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px}
+#avBox header small{display:block;color:var(--muted);font-size:11.5px}
+#avStage{flex:1;min-height:0;position:relative;background:#05080e}
+#avVideo{width:100%;height:100%;object-fit:contain;display:none;background:#05080e}
+#avMsg{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px;color:var(--muted)}
+#avMsg span{max-width:440px}
+#avBox footer{display:flex;gap:8px;align-items:center;padding:7px 12px;font-size:11.5px;color:var(--muted)}
+#avBox footer [translate]{color:var(--ink);font-weight:600}
+@media (max-width:980px){#avBox{left:8px;right:8px;top:56px;bottom:46vh}}
 /* sun and shadows bar (Photoreal 3D only); lifts above the floor plate when both are open */
 #sunBar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:3;display:none;gap:10px;align-items:center;font-size:12px;white-space:nowrap;
   background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:5px 12px}

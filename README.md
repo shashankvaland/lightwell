@@ -58,6 +58,7 @@ attacks the plan before you see it. The app opens with a short, sourced screen o
 | Ranked 3D map coloured by conversion score | Map / Photoreal 3D toggle |
 | Floor-plate test-fit with homes, core, lightwell and escape route | Floor plate panel |
 | Daylight X-ray: floors coloured by how much sky their windows see, lines to the blocking buildings, sun shadows | Daylight toggle · Photoreal 3D sun bar |
+| Aerial flyover of a real CoStar tower (Google Aerial View; a free check first, a billed lookup only when a video exists) and CoStar's Matterport 3D tour | Building card |
 | Live constraints (window distance, cost cap, lightwell on/off) | Left panel |
 | Editable assumptions (cost, carbon, travel limit) | Left panel → Assumptions |
 | Source tag on every **field**: COSTAR, VEXCEL, MATTERPORT, OSM, ESTIMATE, ASSUMED, SIMULATED, MISSING, YOU | Building card |
@@ -153,7 +154,8 @@ The agent's CoStar, Vexcel and Matterport tools read these imported values; they
 | Matterport **API token** | `.env` → `MATTERPORT_API_TOKEN` | same (Matterport's names: API Token ID and Token Secret) |
 | Vexcel **api_key** | `.env` → `VEXCEL_API_KEY` | aerial parking images (the download step needs Vexcel's quickstart) |
 | Anthropic API key | `.env` → `ANTHROPIC_API_KEY` | the Claude agent (deepagents) and `count_cars.py` |
-| Google Maps key or Cesium ion token, Mapillary token | `lightwell/config.js` | Photoreal 3D and street photos |
+| Google Maps key | `lightwell/config.js` → `GOOGLE_MAPS_API_KEY` | Photoreal 3D (Map Tiles API), Street View (Maps JavaScript API) and Aerial View flyovers (Aerial View API); its Google Cloud project needs billing on |
+| Cesium ion token, Mapillary token | `lightwell/config.js` | Photoreal 3D without a Google key; street photos |
 
 Copy `.env.example` to `.env` and `lightwell/config.example.js` to `lightwell/config.js`; both copies are git-ignored.
 Restart the backend after editing `.env`. The CoStar data kit itself needs no key.
