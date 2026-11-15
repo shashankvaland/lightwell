@@ -1,6 +1,6 @@
 <!--
-Devpost submission for Lightwell. Paste everything below the line into Devpost's "About the project" box (it takes
-Markdown and LaTeX; $$ ... $$ renders as centred maths).
+Devpost submission for Lightwell. Open this file as TEXT (not the preview) and paste everything below this comment into Devpost's
+"About the project" box. Devpost renders the Markdown and the $$ ... $$ maths. Money is written \$ so it isn't read as maths.
 Before submitting:
 - Fill the [TO DO] spots: the Peri interview (or delete that paragraph), the Vexcel line and the live link.
 - Other Devpost fields:
@@ -40,8 +40,8 @@ rent and groceries. We kept asking one question: **why can't those towers be the
 **Houston doesn't have enough homes people can afford.**
 - **More than half** of Houston-area renters spend over 30% of their income on rent (Kinder Institute, *State of
   Housing* 2026).
-- Average rent in the region was **$2,050 a month** in Q1 2026 (Houston Association of Realtors). The median
-  household income is about **$65,000** (US Census).
+- Average rent in the region was **\$2,050 a month** in Q1 2026 (Houston Association of Realtors). The median
+  household income is about **\$65,000** (US Census).
 
 **The law changed: Texas SB 840 and SB 2477, in effect since 1 September 2025.**
 - An office building at least five years old can now become homes **by right**: no rezoning, no traffic study, no
@@ -66,7 +66,7 @@ We built Lightwell to answer, for the whole of downtown in minutes: ***which tow
 
 You ask in plain English:
 
-> *"Find offices downtown I can turn into homes for under $300k a home."*
+> *"Find offices downtown I can turn into homes for under \$300k a home."*
 
 A team of AI agents takes it from there, and you watch every step live.
 
@@ -110,7 +110,7 @@ A team of AI agents takes it from there, and you watch every step live.
     - Take the **Matterport 3D tour** inside the real building, or watch a **Google aerial flyover** of it.
 12. **You stay in charge.**
     - Correct any value and the agent re-ranks.
-    - Ask the built-in **Ask Lightwell** chat *"Why is the top pick #1?"* or *"What if the cap were $350k?"*
+    - Ask the built-in **Ask Lightwell** chat *"Why is the top pick #1?"* or *"What if the cap were \$350k?"*
     - Approve the owner memo the agent drafts.
     - Lightwell remembers your brief and corrections, and the team's runs are saved to a shared history.
 
@@ -125,9 +125,9 @@ The top tower in our demo run (HOU-53, a 12-storey downtown office tower):
 |---|---|
 | Homes | **110** (66 studios, 44 one-bed) |
 | Share of the floor with daylight for bedrooms | **74%** |
-| Cost per home | **$245k**, against about $400k to build new |
+| Cost per home | **\$245k**, against about \$400k to build new |
 | Embodied carbon avoided | **about 2,900 t CO₂e** (an estimate; the assumptions are editable) |
-| Rent each home needs | **about $2,010 a month** |
+| Rent each home needs | **about \$2,010 a month** |
 | Ready to hand over | owner memo, site-visit checklist, CSV with a source for every field |
 
 Across all 58 downtown towers, the floor plates hold room for about **35,000 homes** with a bedroom near a window.
@@ -162,22 +162,24 @@ every apartment plan on every home of every tower.
 
 The three formulas behind the decisions:
 
-**Conversion score.** It combines daylight share $D$, vacancy $V$, cost $K$, ceiling height $H$, building age $A$
-and the fire screen $F$, each from 0 to 1:
+**Conversion score.** It combines daylight share *D*, vacancy *V*, cost *K*, ceiling height *H*, building age *A*
+and the fire screen *F*, each from 0 to 1:
 
 $$S = 100\,(0.30\,D + 0.26\,V + 0.20\,K + 0.06\,H + 0.08\,A + 0.10\,F)$$
 
-**Rent needed per home.** From cost per home $C$, target yield $y = 6.5\%$, yearly running cost $O = \$7{,}000$ and
-vacancy $v = 5\%$:
+**Rent needed per home.** From cost per home *C*, target yield *y* (6.5%), yearly running cost *O* (7,000 dollars) and
+vacancy *v* (5%):
 
 $$R = \frac{C\,y + O}{12\,(1 - v)}$$
 
-For HOU-53: $R = \frac{245{,}000 \times 0.065 + 7{,}000}{12 \times 0.95} \approx \$2{,}010$ a month.
+For HOU-53:
 
-**Embodied carbon avoided.** From the converted floor area $A_{m^2}$, 500 kg CO₂e per m² for new construction and
+$$R = \frac{245{,}000 \times 0.065 + 7{,}000}{12 \times 0.95} \approx 2{,}010 \text{ dollars a month}$$
+
+**Embodied carbon avoided.** From the converted floor area *A* in m², 500 kg CO₂e per m² for new construction and
 60% saved by reuse:
 
-$$E = A_{m^2} \times 500 \times 0.6 \;\text{kg CO}_2\text{e}$$
+$$E = A \times 500 \times 0.6 \text{ kg CO}_2\text{e}$$
 
 The 60% sits inside the 53–75% range published studies report for building reuse.
 
