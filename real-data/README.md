@@ -6,6 +6,7 @@ team). Any file can be missing; that layer stays simulated in demo mode and MISS
 ```
 real-data/costar.csv      one row per building
 real-data/tenants.csv     one row per current tenancy (tenant moves)
+real-data/rents.csv       one row per rental listing near downtown (rent check), from backend/rent_comps.py
 real-data/parking.csv     one row per building per aerial capture
 real-data/interiors.csv   one row per building with a Matterport measurement (ceiling height, scan area)
 ```
@@ -23,6 +24,8 @@ and `tenants.csv` for every downtown Houston office tower it covers. Keep the ki
 `COSTAR_KIT_DIR` in `.env`, then:
 ```
 python backend/costar_kit.py      # -> real-data/costar.csv + real-data/tenants.csv, with a report per tower
+python backend/rent_comps.py --show  # which rent columns the kit has (writes nothing)
+python backend/rent_comps.py      # -> real-data/rents.csv: asking rents near downtown for the rent check
 python backend/import_data.py     # -> lightwell/data/real_overlay.js
 ```
 What it does (details in the script's docstring):

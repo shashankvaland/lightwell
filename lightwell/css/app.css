@@ -354,6 +354,7 @@ details.rfail>summary i{font-style:normal;color:var(--ink2);font-variant-numeric
 #memNote{display:none;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;font-size:11px;color:var(--muted)}
 #memNote button{flex:none;padding:2px 9px;font-size:11px}
 
+.t-rent{background:#2b6a8f}.t-rent.works{background:#2f8f4e}.t-rent.close{background:#9a6a12}.t-rent.gap{background:#a8404f}.t-rent.no_data{background:#5b6477}
 /* Ask Lightwell (chat) */
 #chat{display:flex;flex-direction:column;gap:6px;max-height:340px;overflow-y:auto;margin-bottom:8px}
 #chat:empty{display:none}

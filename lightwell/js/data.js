@@ -78,6 +78,9 @@
         ev: {},   // evidence records behind the values, for the evidence drawer
       };
       if (real) applyReal(b, real);
+      // real CoStar asking rents near this tower (rent check); location-based, so every tower gets them when loaded
+      b.rentMarket = LW.marketRent ? LW.marketRent(b, (LW.real && LW.real.rents) || null) : null;
+      b.src.rent = b.rentMarket ? 'COSTAR' : 'MISSING';
       const day = LW.daylightData && LW.daylightData.buildings[String(p.id)];
       b.day = day || null; b.src.daylight = day ? (Object.values(day.blk).some(x => x && x.src === 'ESTIMATE') ? 'ESTIMATE' : 'OSM') : 'MISSING';
       // floor-by-floor vacancy: CoStar's available-space floors when imported; simulated only on anonymous demo towers

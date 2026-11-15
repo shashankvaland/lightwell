@@ -5,7 +5,7 @@ import fs from 'node:fs'; import vm from 'node:vm'; import path from 'node:path'
 const root = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
 const ctx = { window: {}, console, Math, JSON, Set, Map, Array, Object, String, Number, Infinity, isFinite };
 ctx.window.window = ctx.window; vm.createContext(ctx);
-for (const f of ['lightwell/data/daylight.js', 'lightwell/js/engine.js', 'lightwell/js/data.js', 'lightwell/js/shuffle.js', 'lightwell/js/scout.js']) vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f });
+for (const f of ['lightwell/data/daylight.js', 'lightwell/js/engine.js', 'lightwell/js/data.js', 'lightwell/js/shuffle.js', 'lightwell/js/scout.js', 'lightwell/js/rent.js']) vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f });
 const LW = ctx.window.LW;
 const gj = JSON.parse(fs.readFileSync(path.join(root, 'lightwell/data/houston_downtown.geojson'), 'utf8'));
 const B = LW.buildCandidates(gj, 'demo');
@@ -76,6 +76,18 @@ for (const e of est) { const b = sc.find(x => x.id === e.id); b.rep = e.value; b
 sc.forEach(b => LW.analyze(b));
 const pri = LW.dataPriority(sc, 8);
 fs.writeFileSync(path.join(root, 'tests/js_scout.json'), JSON.stringify({ S: LW.S, A: LW.A, input: scIn, estimates: est, priority: pri }));
+// Rent check: a test grid of listings around downtown (test fixture only, never shown in the app)
+const comps = [];
+for (let i = 0; i < 160; i++) comps.push({ lat: 29.745 + (i % 16) * 0.0018, lon: -95.378 + Math.floor(i / 16) * 0.0025, beds: i % 7 === 6 ? null : i % 3,
+  rent: 1200 + (i * 37) % 1500 + (i % 3) * 300, sqft: i % 5 === 4 ? null : 480 + (i % 3) * 320 + (i * 13) % 90 });
+const rentRows = [];
+for (const [k, b] of sc.entries()) {
+  b.rentMarket = k % 9 === 8 ? null : LW.marketRent(b, k % 5 === 3 ? comps.map(c => ({ ...c, beds: null })) : comps);
+  rentRows.push({ id: b.id, rentMarket: b.rentMarket, check: LW.rentCheck(b) });
+}
+fs.writeFileSync(path.join(root, 'tests/js_rent.json'), JSON.stringify({ A: LW.A, rows: rentRows }));
+console.log(`Rent check: ${rentRows.filter(r => r.check && r.check.verdict !== 'no_data').length} towers with comps; verdicts ` +
+  JSON.stringify(rentRows.reduce((o, r) => { const v = r.check ? r.check.verdict : 'none'; o[v] = (o[v] || 0) + 1; return o; }, {})));
 console.log(`Data scout: ${est.length} towers estimated; top data request ${pri[0] ? pri[0].id + ' (' + pri[0].reasons[0] + ')' : 'none'}.`);
 const all = out.flatMap(s => s.rows), bad = all.filter(r => r.issues.length || r.altIssues.length);
 console.log(`JS engine: ${B.length} towers x ${scenarios.length} scenarios; ${bad.length} layouts with geometry issues; ` +

@@ -14,6 +14,8 @@ DEFAULT_ASSUMPTIONS = {
     "ceilGood": 8.5, "ceilHard": 7.5, "slabFt": 1.5,   # measured clear ceilings (Matterport): comfortable, too low, least structure above
     "unknownVacancy": 0.25, "unknownYear": 1970, "moveCostSqft": 15, "buyoutSqftYr": 30,
     "unknownLeaseYrs": 3,   # years of concessions assumed when a tenant's lease end is not on record (real CoStar tenants)
+    # rent check (rent.py)
+    "yieldOnCost": 0.065, "opexPerHomeYr": 7000, "rentVacancy": 0.05, "rentBurden": 0.30, "medianIncome": 62900,
 }
 DEFAULT_CONSTRAINTS = {"u": 30, "cap": 300000, "allowLW": True, "minHomes": 20, "useParking": True, "require": [],
                        "neighbours": True, "dayLim": 25, "dayStrict": False}   # last three: Daylight X-ray
@@ -99,6 +101,7 @@ class Building:
     converted: int | None = None      # CoStar: year the building was converted to another use (it then never passes)
     ceil: float | None = None         # Matterport: clear ceiling height (ft) measured in a scan of an office floor
     records: list | None = None       # record cross-check findings from the browser (lightwell/js/records.js): where two sources disagree
+    rentMarket: dict | None = None    # real CoStar asking rents near the tower, summarised by the browser (rent.py)
 
 
 def layout(W, D, u, lw, core=None):
