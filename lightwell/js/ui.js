@@ -4,6 +4,20 @@
   const fmt = n => Math.round(n).toLocaleString(), money = n => isFinite(n) && n != null ? '$' + Math.round(n / 1000) + 'k' : '—', pct = x => x == null ? '—' : Math.round(x * 100) + '%';
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
   Object.assign(LW, { fmt, money, pct, esc });
+  // Text colour that stays readable on a score colour (the low end of the score ramp is dark).
+  LW.scoreInk = s => (s < 22 ? '#eef1f7' : '#0b111d');
+  // Small line icons (24 px grid) for the action buttons.
+  const ICON = {
+    orbit: '<circle cx="12" cy="12" r="2.6"/><ellipse cx="12" cy="12" rx="9.5" ry="4.2" transform="rotate(-20 12 12)"/>',
+    street: '<path d="M3 20.5h18M6 20.5V9l6-4 6 4v11.5M10 20.5v-5h4v5"/>',
+    pano: '<circle cx="12" cy="5.5" r="2.5"/><path d="M12 8.5v6.5M8.5 21l3.5-6 3.5 6M8 11.5h8"/>',
+    tour: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
+    aerial: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.5v5l4.5-2.5z"/>',
+    plate: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h8v10M12 4v6M12 15h8"/>',
+    edit: '<path d="M4 20l1-4L16.5 4.5l3 3L8 19zM14 7l3 3"/>',
+    memo: '<path d="M7 3h7l4 4v14H7zM14 3v4h4M9.5 14.5l2 2 3.5-4"/>',
+  };
+  const ic = k => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
   LW.scored = false; LW.flagsShown = false; LW.selected = null; LW.reviewed = null;
   const LAYERS = { market: 'CoStar', aerial: 'Vexcel', interior: 'Matterport' };
 
@@ -21,13 +35,15 @@
     LW.B = LW.buildCandidates(LW.geo, LW.dataMode);
     LW.byOsm = new Map(LW.B.map(b => [b.osmId, b]));
     $('kCand').textContent = LW.B.length;
-    document.querySelectorAll('#dataMode button').forEach(x => x.classList.toggle('on', x.dataset.m === LW.dataMode));
-    const n = k => LW.B.filter(b => b.real[k]).length;
-    $('dataNote').innerHTML = (LW.real ? `<b>Imported real data</b> (${esc(LW.real.generated.replace('T', ' '))}): <b>${n('market')}</b> towers with CoStar records, <b>${n('aerial')}</b> with Vexcel parking counts, <b>${n('interior')}</b> with Matterport plates${LW.real.counts && LW.real.counts.tenants ? `, <b>${LW.real.counts.tenants}</b> current tenancies` : ''}.<br>`
+    Object.values(LW.views).forEach(v => v.setTowers());   // both views mark / rebuild their towers for the new list
+    document.querySelectorAll('#dataMode button').forEach(x => { x.classList.toggle('on', x.dataset.m === LW.dataMode); x.setAttribute('aria-pressed', x.dataset.m === LW.dataMode); });
+    const n = k => LW.B.filter(b => b.real[k]).length, chip = (v, t) => `<span><b>${v}</b> ${t}</span>`;
+    $('dataNote').innerHTML = (LW.real ? `<div class="dchips" title="Real data imported ${esc(LW.real.generated.replace('T', ' '))}">${chip(n('market'), 'CoStar towers')}${chip(n('aerial'), 'Vexcel counts')}${chip(n('interior'), 'Matterport plates')}${LW.real.counts && LW.real.counts.tenants ? chip(LW.real.counts.tenants, 'tenants') : ''}</div>`
       : '<b>Real:</b> building footprints and heights (OpenStreetMap). No CoStar, Vexcel or Matterport data imported yet.<br>')
       + (LW.dataMode === 'demo' ? '<b>Demo fill-in:</b> towers without real records get SIMULATED values. Real names stay hidden next to simulated numbers.'
         : '<b>Real data only:</b> nothing is simulated. Missing values show as MISSING and any assumption the engine makes is stated.')
       + ' Click any source tag to see the evidence.';
+    LW.tags.render();
   }
   document.querySelectorAll('#dataMode button').forEach(x => x.onclick = () => {
     if (LW.dataMode === x.dataset.m || (LW.agent && LW.agent.running)) return;
@@ -43,7 +59,7 @@
   LW.refresh = function () {
     LW.B.forEach(b => LW.view.paint(b));
     LW.view.setFlags(LW.flagsShown ? LW.B.filter(b => b.phantom) : []);
-    totals(); renderRanking();
+    totals(); renderRanking(); LW.tags.render(); $('legend').style.display = LW.scored ? 'flex' : 'none';
     if (LW.selected) { renderCard(LW.selected); if ($('plateBox').style.display === 'block') openPlate(LW.selected); }
     if (LW.dayViewOn) { LW.view.setDaylight(true); daySum(); }   // the brief sliders recolour the Daylight view live
   };
@@ -59,17 +75,18 @@
   function renderRanking() {
     if (!LW.scored) return;
     const list = [...LW.B].sort((a, b) => (b.pass - a.pass) || (b.score - a.score)).slice(0, 15);
-    $('ranking').innerHTML = list.map(b => `<div class="rank ${LW.selected === b ? 'sel' : ''}" data-i="${b.idx}">
-      <span class="sc" style="background:${LW.hex(LW.scoreRGB(b.score))}">${b.score}</span>
+    $('ranking').innerHTML = list.map(b => `<div class="rank ${LW.selected === b ? 'sel' : ''}" data-i="${b.idx}" role="button" tabindex="0" aria-label="${esc(b.label)}: score ${b.score}, ${b.pass ? 'passes the brief' : 'does not pass the brief'}">
+      <span class="sc" style="background:${LW.hex(LW.scoreRGB(b.score))};color:${LW.scoreInk(b.score)}">${b.score}</span>
       <span class="nm"><b>${esc(b.label)}</b> · ${LW.eff(b, 'floors')} floors${b.real.market ? ' <span class="realdot" title="Real CoStar record">◆</span>' : ''} ${b.phantom ? '<span class="flag" title="Occupancy discrepancy to investigate">⚑</span>' : ''}${fsDot(b.plan.safety.status)}${Object.keys(b.overrides).length ? ' <span class="you" title="Includes your corrections">✎</span>' : ''}
-      <small>${b.pass ? fmt(b.plan.homes) + ' homes · ' + money(b.plan.cpu) + '/home' : esc(b.why.join(' · ')) + (b.plan.homes ? ' · ' + money(b.plan.cpu) + '/home' : '')}${b.plan.lw ? ' · lightwell' : ''}</small></span></div>`).join('');
-    $('ranking').querySelectorAll('.rank').forEach(el => el.onclick = () => LW.onSelect(LW.B[+el.dataset.i], true));
+      <small>${b.pass ? fmt(b.plan.homes) + ' homes · ' + money(b.plan.cpu) + '/home' : esc(b.why.join(' · ')) + (b.plan.homes ? ' · ' + money(b.plan.cpu) + '/home' : '')}${b.plan.lw ? ' · lightwell' : ''}</small></span>${b.pass ? '<span class="okm" title="Passes the brief">✓</span>' : ''}</div>`).join('');
+    $('ranking').querySelectorAll('.rank').forEach(el => { el.onclick = () => LW.onSelect(LW.B[+el.dataset.i], true);
+      el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } }; });
   }
 
   // ---------- selection + card ----------
   LW.onSelect = function (b, fly) {
     const prev = LW.selected; LW.selected = b;
-    LW.view.select(b, prev); renderRanking();
+    LW.view.select(b, prev); renderRanking(); LW.tags.render();
     if (!b) { $('card').style.display = 'none'; $('plateBox').style.display = 'none'; return; }
     if (b.plan == null) LW.analyze(b);
     renderCard(b); if ($('plateBox').style.display === 'block') openPlate(b);
@@ -102,15 +119,15 @@
   function moveSection(b) {
     if (!LW.fastTrack) return '';
     const ft = LW.fastTrack(b), mp = LW.movePlan && LW.movePlan.tower === b.id ? LW.movePlan : null, ch = mp && LW.moveChallenge;
-    const head = `<div class="find"><button class="tag t-tx ${ft.status}" data-ev="texas">TX FAST-TRACK</button><span><b>${LW.FT_LABEL[ft.status]}.</b> `
+    const head = `<div class="find blk"><button class="tag t-tx ${ft.status}" data-ev="texas">TX FAST-TRACK</button><span><b>${LW.FT_LABEL[ft.status]}.</b> `
       + (ft.status === 'unknown' ? 'Needs CoStar floor-by-floor availability to check the 65% residential rule.'
         : `${ft.free} of ${ft.floors} floors empty; 65% homes needs ${ft.need}${ft.short ? `, so <b>${ft.short} more floors</b> must be freed` : ''}.`
           + (ft.ageKnown ? ` Built ${ft.age} years ago${ft.age >= LW.POLICY.minAge ? ' (5+ ✓)' : ''}.` : ' Year built unknown (must be 5+ years).'))
       + `</span></div>`;
     if (ft.status === 'unknown' || ft.status === 'too_new') return head;
-    let body = `<div class="btns"><button id="mvFast" class="${mp && mp.goal === 'fast' ? 'on' : ''}">Plan tenant moves</button><button id="mvEmpty" class="${mp && mp.goal === 'empty' ? 'on' : ''}">Empty the tower</button>${mp ? '<button id="mvClear">Hide</button>' : ''}</div>`;
+    let body = `<div class="btns"><button id="mvFast" class="${mp && mp.goal === 'fast' ? 'on' : ''}">Plan tenant moves</button><button id="mvEmpty" class="${mp && mp.goal === 'empty' ? 'on' : ''}">Empty the tower</button></div>`;
     if (mp) {
-      body += `<div class="moves"><div class="mvSum">${mp.moves.some(m => m.src === 'COSTAR') ? '<i>Hypothetical plan using real CoStar tenants, not their intentions.</i><br>' : ''}<b>${mp.moves.length}</b> tenants · <b>${mp.freed_floors}</b> floors freed → <b>${fmt(mp.homes_after)}</b> homes can start now (+${fmt(mp.homes_gained)})<br>
+      body += `<div class="moves"><button id="mvClear" class="x" aria-label="Hide this plan" title="Hide this plan">×</button><div class="mvSum">${mp.moves.some(m => m.src === 'COSTAR') ? '<i>Hypothetical plan using real CoStar tenants, not their intentions.</i><br>' : ''}<b>${mp.moves.length}</b> tenants · <b>${mp.freed_floors}</b> floors freed → <b>${fmt(mp.homes_after)}</b> homes can start now (+${fmt(mp.homes_gained)})<br>
         Incentives ≈ <b>${LW.bigMoney(mp.cost)}</b>${mp.cost_per_home_gained ? ` · <b>${money(mp.cost_per_home_gained)}</b> per home unlocked` : ''} ${tagFor(b, null, 'ESTIMATE')}<br>
         ${mp.fast_track_after ? '<span class="ok">✓ reaches the 65% fast-track</span>' : '<span class="bad">✗ still short of 65%</span>'}</div>
         ${mp.moves.map(m => `<div class="mv"><span class="tag ${m.src === 'COSTAR' ? 't-cs' : 't-sim'}">${m.src === 'COSTAR' ? 'COSTAR' : 'SIMULATED'}</span>
@@ -161,40 +178,46 @@
     const cs = b.ev.costar || {}, photo = b.photo && (window.LIGHTWELL_CONFIG || {}).COSTAR_PHOTOS ? String(b.photo) : '';
     $('card').style.display = 'block';
     $('card').innerHTML = `${photo ? `<a href="${esc(photo.replace('/112/', '/113/'))}" target="_blank" rel="noopener" title="CoStar photo (opens larger)"><img class="cphoto" src="${esc(photo.replace('/112/', '/110/'))}" alt="${esc(b.label)}: CoStar photo" loading="lazy" onerror="this.parentNode.remove()"></a>` : ''}
-      <h3>${esc(b.label)}${b.label !== b.id ? ` <small style="color:var(--muted)">${b.id}</small>` : ''}</h3>
-      <div class="meta">${layers.length ? `Real ${layers.map(k => LAYERS[k]).join(' + ')} data${b.costarId ? ' · CoStar ' + esc(b.costarId) : ''}`
-        : LW.dataMode === 'demo' ? 'Real footprint and height · market data simulated' : 'Real footprint and height · no market records'}${cs.class ? ' · Class ' + esc(cs.class) : ''}${cs.rating ? ` · ${cs.rating}-star` : ''}${b.owner ? ' · ' + esc(b.owner) : ''}</div>
-      <div style="display:flex;justify-content:space-between"><span>Conversion score</span><b>${b.score ?? '–'}/100</b></div>
-      <div class="bar"><i style="width:${b.score ?? 0}%;background:${col}"></i></div>
-      ${b.pass ? '' : `<div class="why">Doesn't pass the brief: ${esc(b.why.join(' · '))}</div>`}
+      <div class="chead"><div><h3>${esc(b.label)}${b.label !== b.id ? ` <small>${b.id}</small>` : ''}</h3>
+        <div class="meta">${layers.length ? `Real ${layers.map(k => LAYERS[k]).join(' + ')} data${b.costarId ? ' · CoStar ' + esc(b.costarId) : ''}`
+        : LW.dataMode === 'demo' ? 'Real footprint and height · market data simulated' : 'Real footprint and height · no market records'}${cs.class ? ' · Class ' + esc(cs.class) : ''}${cs.rating ? ` · ${cs.rating}-star` : ''}${b.owner ? ' · ' + esc(b.owner) : ''}</div></div>
+        <button id="cardClose" class="x" aria-label="Close this tower" title="Close (back to the ranking)">×</button></div>
+      <div class="scoreRow"><div class="ring" style="--p:${b.score ?? 0};--c:${col}" role="img" aria-label="Conversion score ${b.score ?? 'not scored'} out of 100"><b>${b.score ?? '–'}</b></div>
+        <div><div class="lbl">Conversion score, out of 100</div>
+          <span class="pill ${b.pass ? 'ok' : 'no'}">${b.pass ? '✓ Passes the brief' : "Doesn't pass the brief"}</span>
+          ${b.pass ? '' : `<div class="why">${esc(b.why.join(' · '))}</div>`}</div></div>
       ${b.converted ? `<div class="conv"><b>Already converted</b> (CoStar, ${esc(b.converted)})${b.convertedTo ? `: now ${esc(b.convertedTo)}` : ''}. Downtown Houston offices do become homes.</div>` : ''}
       <div class="big"><div><b>${fmt(p.homes)}</b><span>homes (${p.mix[0]} studio · ${p.mix[1]} 1-bed · ${p.mix[2]} 2-bed)</span></div>
         <div><b>${money(p.cpu)}</b><span>per home vs ~${money(A.newBuildPerHome)} new build</span></div>
         <div><b>${pct(p.daylitFrac)}</b><span>of usable floor is homes within ${LW.S.u} ft of a window${p.day ? ' that sees the sky' : ''}</span></div>
         <div><b>${fmt(p.carbon)} t</b><span>CO₂e embodied carbon avoided</span></div></div>
+      <h4>Building</h4>
       ${row(b, 'floors', `Height ${b.heightM} m · ${LW.eff(b, 'floors')} floors`)}
       ${row(b, 'plate', `Floor plate ${LW.srcOf(b, 'plate') === 'MATTERPORT' ? '' : 'about '}${b.W} × ${b.D} ft${b.irregular ? ' (irregular footprint, simplified)' : ''}`)}
       ${row(b, 'core', `Core ${Math.round(c[2] - c[0])} × ${Math.round(c[3] - c[1])} ft${LW.srcOf(b, 'core') === 'ASSUMED' ? ', assumed central' : ''}`)}
       ${row(b, 'f2f', `${f2f} ft floor-to-floor${f2f < A.f2fHard ? ' (too low for homes)' : f2f < A.f2fMin ? ' (tight for homes)' : ''}`)}
       ${b.sprinklers === true || b.sprinklers === false ? row(b, 'sprinklers', b.sprinklers ? 'Sprinklers on record' : 'No sprinklers on record: a full retrofit is priced in') : ''}
+      <h4>Market</h4>
       ${row(b, 'rep', rep == null ? 'Leased: unknown' : `${pct(rep)} leased`)}
       ${row(b, 'year', year == null ? 'Year built: unknown' : `Built ${year}${cs.renovated && LW.srcOf(b, 'year') === 'COSTAR' ? ` · renovated ${esc(cs.renovated)}` : ''}`)}
       ${row(b, 'obs', parkTxt)}
       ${row(b, null, `Vacancy signal ${pct(b.vac)} (from ${b.vacBasis})`, b.vacBasis === 'assumed' ? 'ASSUMED' : 'FEASIBILITY')}
+      <h4>Homes and daylight</h4>
       ${row(b, null, p.lw ? `Lightwell cut: ${p.perFloor} homes per floor` : `${p.perFloor} homes per floor along the window walls`, 'FEASIBILITY')}
       ${dayRow(b)}
       ${floorsRow(b)}
       ${moveSection(b)}
-      <div class="find"><button class="tag t-safe ${s.status}" data-ev="fire">FIRE · PRELIM</button><span><b>${LW.SAFE_LABEL[s.status]}.</b> Farthest home about ${Math.round(s.travel)} ft from a stair (estimate).${s.notes.length ? '<br>' + s.notes.map(esc).join('<br>') : ''}</span></div>
-      ${b.phantom ? `<div class="find"><button class="tag t-fx" data-ev="obs">INVESTIGATE</button><span>${(b.real.market && b.real.aerial)
+      <div class="find blk"><button class="tag t-safe ${s.status}" data-ev="fire">FIRE · PRELIM</button><span><b>${LW.SAFE_LABEL[s.status]}.</b> Farthest home about ${Math.round(s.travel)} ft from a stair (estimate).${s.notes.length ? '<br>' + s.notes.map(esc).join('<br>') : ''}</span></div>
+      ${b.phantom ? `<div class="find blk"><button class="tag t-fx" data-ev="obs">INVESTIGATE</button><span>${(b.real.market && b.real.aerial)
         ? `Observation to investigate, not a finding: reported ${pct(rep)} leased, but parking never above ${pct(Math.max(...obs))} across ${obs.length} captures. Garages, transit or remote work can explain this.`
         : `Simulated example of an occupancy discrepancy: reported ${pct(rep)} leased, parking never above ${pct(Math.max(...obs))}.`}</span></div>` : ''}
       ${b.assumed && b.assumed.length ? `<div class="note" style="margin-top:6px">${b.assumed.map(esc).join('<br>')}</div>` : ''}
       <details class="cl"><summary>Before a site visit (${checklist.length})</summary><ol>${checklist.map(x => `<li>${esc(x.text)}${x.from ? ` <small>· ${esc(x.from)}</small>` : ''}</li>`).join('')}</ol></details>
-      <div class="btns"><button id="orbit">Drone orbit</button><button id="street">3D street level</button>
-        <button id="sview" class="sv">Street View</button></div>
-      ${(b.models || []).length || (b.real.market && b.address) ? `<div class="btns">${(b.models || []).length ? `<button id="tour" class="sv" title="CoStar's Matterport scans of this building">3D tour inside (${b.models.length})</button>` : ''}${b.real.market && b.address ? '<button id="aerial" class="sv" title="Google Aerial View: a cinematic flyover of this building">Aerial flyover</button>' : ''}</div>` : ''}
-      <div class="btns"><button id="showPlate">Floor plate</button><button id="fix">Correct data</button></div>
+      <h4>See the building</h4>
+      <div class="acts"><button id="orbit">${ic('orbit')}Drone orbit</button><button id="street">${ic('street')}3D street level</button>
+        <button id="sview" class="sv">${ic('pano')}Street View</button>${(b.models || []).length ? `<button id="tour" class="sv" title="CoStar's Matterport scans of this building">${ic('tour')}3D tour inside (${b.models.length})</button>` : ''}${b.real.market && b.address ? `<button id="aerial" class="sv" title="Google Aerial View: a cinematic flyover of this building">${ic('aerial')}Aerial flyover</button>` : ''}</div>
+      <h4>Test and correct</h4>
+      <div class="btns" style="margin-top:0"><button id="showPlate">${ic('plate')}Floor plate</button><button id="fix">${ic('edit')}Correct data</button></div>
       <div id="fixForm" style="display:none">
         <label class="row">Leased (%) <input id="fRep" type="number" min="0" max="100" placeholder="unknown" value="${rep == null ? '' : Math.round(rep * 100)}"></label>
         <label class="row">Year built <input id="fYear" type="number" min="1900" max="2026" placeholder="unknown" value="${year ?? ''}"></label>
@@ -203,7 +226,9 @@
         <div class="askErr" id="fErr"></div>
         <div class="btns"><button id="fSave" class="primary">Save and re-score</button><button id="fReset">Reset</button></div>
       </div>
-      <div class="btns"><button id="approve" class="primary wide">${LW.reviewFresh(b) ? 'Approve reviewed memo' : 'Draft memo'}</button></div>`;
+      <div class="btns" style="margin-top:12px"><button id="approve" class="primary wide">${ic('memo')}${LW.reviewFresh(b) ? 'Approve reviewed memo' : 'Draft memo'}</button></div>`;
+    $('cardClose').onclick = () => LW.onSelect(null, false);
+    if ($('aerial')) warmAerial();
     $('card').querySelectorAll('[data-ev]').forEach(el => el.onclick = () => LW.evidence(b, el.dataset.ev));
     $('showPlate').onclick = () => openPlate(b); $('approve').onclick = () => openMemo(b);
     $('orbit').onclick = () => { $('plateBox').style.display = 'none'; LW.view.orbit(b); };
@@ -325,7 +350,7 @@
       + '<h4>Estimated</h4>' + kv([['Farthest home to a stair', `~${Math.round(sf.travel)} ft (limit ~${LW.A.maxTravelFt} ft)`], ['Stair separation', `~${Math.round(sf.sep)} ft (needs ~${Math.round(sf.req)} ft)`], ['Sprinkler retrofit', sf.retrofit ? 'assumed needed' : 'not assumed']])
       + '<h4>Not verified</h4><ul>' + sf.unverified.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>');
     if (!k) parts.push('<p>Calculated by the Lightwell engine from the values above and the editable assumptions.</p>' + (b.assumed.length ? '<ul>' + b.assumed.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>' : ''));
-    $('evTitle').textContent = `${b.label} · ${FIELD[k] || k}`; $('evBody').innerHTML = parts.join(''); $('evidence').style.display = 'block';
+    $('evTitle').textContent = `${b.label} · ${FIELD[k] || k}`; $('evBody').innerHTML = parts.join(''); $('evidence').style.display = 'block'; $('evClose').focus();
   };
   $('evClose').onclick = () => $('evidence').style.display = 'none';
 
@@ -478,7 +503,25 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
 `;
     showMemo('Portfolio memo');
   }
-  function showMemo(title) { $('memoTitle').textContent = title; $('memo').textContent = memoText; $('modal').style.display = 'flex'; }
+  // The memo is Markdown (what Copy and Download give). On screen it is shown formatted: headings, bold, lists, quotes, tables.
+  function mdHtml(md) {
+    const inl = t => esc(t).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[\s(])_([^_]+)_(?=[\s).,;:]|$)/g, '$1<i>$2</i>');
+    const out = []; let list = null, table = false, m;
+    const close = () => { if (list) out.push(`</${list}>`); if (table) out.push('</table>'); list = null; table = false; };
+    for (const line of md.split('\n')) {
+      if ((m = line.match(/^(#{1,2}) (.*)/))) { close(); out.push(`<h${m[1].length + 2}>${inl(m[2])}</h${m[1].length + 2}>`); }
+      else if ((m = line.match(/^- (.*)/)) || (m = line.match(/^\d+\. (.*)/))) { const kind = line[0] === '-' ? 'ul' : 'ol';
+        if (list !== kind) { close(); out.push(`<${kind}>`); list = kind; } out.push(`<li>${inl(m[1])}</li>`); }
+      else if (line[0] === '|') { if (/^[|\- ]+$/.test(line)) continue; const cells = line.split('|').slice(1, -1).map(c => inl(c.trim()));
+        if (!table) { close(); out.push('<table>'); table = true; out.push('<tr>' + cells.map(c => `<th>${c}</th>`).join('') + '</tr>'); }
+        else out.push('<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>'); }
+      else if ((m = line.match(/^> (.*)/))) { close(); out.push(`<blockquote>${inl(m[1])}</blockquote>`); }
+      else if (line.trim()) { close(); out.push(`<p>${inl(line)}</p>`); }
+      else close();
+    }
+    close(); return out.join('');
+  }
+  function showMemo(title) { $('memoTitle').textContent = title; $('memo').innerHTML = mdHtml(memoText); LW.memoText = memoText; $('modal').style.display = 'flex'; $('mClose').focus(); }
   $('mClose').onclick = () => $('modal').style.display = 'none';
   $('copy').onclick = async () => { try { await navigator.clipboard.writeText(memoText); toast('Copied'); } catch { toast('Copy failed: select the text instead'); } };
   $('dl').onclick = () => download(memoName + '.md', memoText, 'text/markdown');
@@ -535,22 +578,26 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
   // ---------- view switch ----------
   async function switchView(name) {
     if (LW.view === LW.views[name]) return;
-    document.querySelectorAll('#views button[data-v]').forEach(x => x.classList.toggle('on', x.dataset.v === name));
+    viewBtn(name);
     const prev = LW.view, next = LW.views[name];
-    $('viewNote').style.display = 'none';
+    $('viewNote').style.display = 'none'; clearTimeout(switchView.t);
     if (name === 'g3d') {
       $('viewNote').style.display = 'block'; $('viewNote').textContent = 'Loading 3D…';
       try { await next.init(); }
-      catch (e) { $('viewNote').textContent = e.message; document.querySelectorAll('#views button[data-v]').forEach(x => x.classList.toggle('on', x.dataset.v === 'map')); return; }
-      $('viewNote').textContent = next.mode === 'google' ? 'Google Photorealistic 3D Tiles · coloured towers are Lightwell results'
+      catch (e) { $('viewNote').textContent = e.message; viewBtn('map'); return; }
+      $('viewNote').textContent = next.mode === 'google' ? 'Google Photorealistic 3D Tiles · towers are tinted by their Lightwell score'
         : (next.error || 'No Google key in config.js: showing OpenStreetMap buildings in 3D. Add a key for the photoreal city.');
+      // on the photoreal city the note is only a hello: it steps aside after a few seconds (a fallback or an error stays)
+      if (next.mode === 'google') switchView.t = setTimeout(() => { if (LW.view === next) { $('viewNote').style.display = 'none'; placeLegends(); } }, 6000);
     }
     prev.show(false); next.show(true); LW.view = next;
     prev.stopOrbit(); prev.select(null, LW.selected); LW.refresh(); next.select(LW.selected, null);
     next.setFloors(LW.floorsOn); next.setDaylight(LW.dayViewOn); if (next.setMoves) next.setMoves(LW.movePlan);
     if (LW.selected) next.fly(LW.selected);
     $('sunBar').style.display = name === 'g3d' ? 'flex' : 'none'; placeLegends(); placeSun();
+    if (name === 'g3d') sun();   // the 3D light follows the sun controls (a fixed afternoon by default), not the clock on the wall
   }
+  const viewBtn = name => document.querySelectorAll('#views button[data-v]').forEach(x => { x.classList.toggle('on', x.dataset.v === name); x.setAttribute('aria-pressed', x.dataset.v === name); });
   // The view legends sit just under the view note (shown in Photoreal 3D) instead of behind it.
   function placeLegends() { const n = $('viewNote'), top = n.style.display === 'block' ? Math.round(n.getBoundingClientRect().bottom + 6) + 'px' : '';
     $('floorsLegend').style.top = top; $('dayLegend').style.top = top; }
@@ -571,7 +618,7 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
   $('floorsBtn').onclick = () => {
     if (!LW.floorsOn && LW.dayViewOn) $('dayBtn').onclick();   // Empty floors and Daylight are exclusive
     LW.floorsOn = !LW.floorsOn;
-    $('floorsBtn').classList.toggle('on', LW.floorsOn);
+    $('floorsBtn').classList.toggle('on', LW.floorsOn); $('floorsBtn').setAttribute('aria-pressed', LW.floorsOn);
     $('floorsLegend').style.display = LW.floorsOn ? 'flex' : 'none';
     const known = LW.B.filter(b => LW.srcOf(b, 'vacant') !== 'MISSING');
     const empty = known.reduce((s, b) => s + b.vacantFloors.length, 0), all = known.reduce((s, b) => s + b.floors - 1, 0);
@@ -592,14 +639,15 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
     $('mpNote').textContent = `${ms.length} Matterport scan${ms.length > 1 ? 's' : ''} from the CoStar data kit · may show a suite or the lobby, not a whole floor · the first load can take up to a minute`;
     $('mpModel').innerHTML = ms.map((m, i) => `<option value="${esc(m)}">Scan ${i + 1} of ${ms.length}</option>`).join('');
     $('mpModel').onchange = () => show($('mpModel').value);
-    show(ms[0]); $('mpBox').style.display = 'flex';
+    show(ms[0]); $('mpBox').style.display = 'flex'; $('mpClose').focus();
   };
-  $('mpClose').onclick = () => { $('mpBox').style.display = 'none'; $('mpFrame').src = 'about:blank'; };
+  $('mpClose').onclick = () => { $('mpBox').style.display = 'none'; $('mpFrame').src = 'about:blank'; if ($('tour')) $('tour').focus(); };
+  $('mpBox').onclick = e => { if (e.target.id === 'mpBox') $('mpClose').onclick(); };   // a click on the backdrop closes it
 
   // ---------- Google Aerial View: a cinematic flyover of a real (CoStar) building ----------
-  // The free metadata check runs first; the billed lookup (the video links) only when a video exists and is about to
-  // play. Google's rules: video links expire and are never stored (look them up each time); video ids may be stored,
-  // so a requested render is remembered. The "Google Maps" attribution stays on the panel.
+  // One lookup per play: Google bills it only when it returns the video links, so nothing needs checking first, and the
+  // still image shows at once while the video buffers. Google's rules: the links expire and are never stored (looked up
+  // each time); video ids may be stored, so a requested render is remembered. The "Google Maps" attribution stays on.
   const AV = 'https://aerialview.googleapis.com/v1/videos:';
   const avIds = { get(k) { try { return localStorage.getItem('lightwell.aerialVideo.' + k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem('lightwell.aerialVideo.' + k, v); } catch (e) { /* private mode */ } } };
@@ -608,54 +656,73 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
     const r = await fetch(AV + method + '?' + q, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);
     return { http: r.status, ...(await r.json().catch(() => ({}))) };
   }
+  // open the connection to Google as soon as a card offers a flyover, so the click itself is quicker
+  let avWarm = false;
+  function warmAerial() {
+    if (avWarm || !(window.LIGHTWELL_CONFIG || {}).GOOGLE_MAPS_API_KEY) return; avWarm = true;
+    const l = document.createElement('link'); l.rel = 'preconnect'; l.href = 'https://aerialview.googleapis.com'; document.head.appendChild(l);
+  }
   function closeAerial() {
-    const v = $('avVideo'); v.pause(); v.removeAttribute('src'); v.removeAttribute('poster'); v.load();
-    $('avBox').style.display = 'none'; LW.aerialRun = null;
+    const v = $('avVideo'); v.oncanplay = v.onerror = null; v.pause(); v.removeAttribute('src'); v.removeAttribute('poster'); v.load();
+    $('avStage').classList.remove('loading'); $('avBox').style.display = 'none'; LW.aerialRun = null;
+    if ($('aerial')) $('aerial').focus();
   }
   LW.aerial = async function (b) {
-    const address = `${b.address}, Houston, TX`, v = $('avVideo'), run = (LW.aerialRun = {});
+    const address = `${b.address}, Houston, TX`, v = $('avVideo'), stage = $('avStage'), run = (LW.aerialRun = {});
     const say = (text, act) => {
-      v.pause(); v.style.display = 'none'; $('avMsg').style.display = 'flex';
+      stage.classList.remove('loading'); v.pause(); v.style.display = 'none'; $('avMsg').style.display = 'flex';
       $('avMsg').innerHTML = `<span>${esc(text)}</span>` + (act ? `<button class="primary">${esc(act.label)}</button>` : '');
       if (act) $('avMsg').querySelector('button').onclick = act.go;
     };
-    if ($('mpBox').style.display === 'flex') $('mpClose').onclick();   // one panel at a time
+    if ($('mpBox').style.display === 'flex') $('mpClose').onclick();   // one at a time
     $('avTitle').textContent = `${b.label} · aerial flyover`; $('avNote').textContent = `Google Aerial View of ${b.address}, Houston`;
-    $('avCap').textContent = ''; $('avBox').style.display = 'flex';
+    $('avCap').textContent = ''; v.style.display = 'none'; $('avMsg').style.display = 'none';
+    stage.classList.add('loading'); $('avBox').style.display = 'flex'; $('avClose').focus();
     if (!(window.LIGHTWELL_CONFIG || {}).GOOGLE_MAPS_API_KEY) return say('Add GOOGLE_MAPS_API_KEY to lightwell/config.js to see the flyover.');
-    say(`Looking for Google's flyover of this address…`);
     try {
       const id = avIds.get(b.costarId);
-      let m = await avCall('lookupVideoMetadata', id ? { videoId: id } : { address });   // free
-      if (id && m.http === 404) m = await avCall('lookupVideoMetadata', { address });
+      let r = await avCall('lookupVideo', id ? { videoId: id } : { address });
+      if (id && r.http === 404) r = await avCall('lookupVideo', { address });
       if (LW.aerialRun !== run) return;   // closed, or another tower opened meanwhile
-      if (m.state === 'ACTIVE' && m.videoId) {
-        avIds.set(b.costarId, m.videoId);
-        const r = await avCall('lookupVideo', { videoId: m.videoId });   // billed, only now that the video exists
-        if (LW.aerialRun !== run) return;
-        const u = r.uris || {}, mp4 = (u.MP4_HIGH || u.MP4_MEDIUM || u.MP4_LOW || {}).landscapeUri;
-        if (!mp4) return say(`Google returned no video file (${(r.error && r.error.message) || r.state || r.http}).`);
+      const u = r.uris, m = r.metadata || {};
+      if (m.videoId) avIds.set(b.costarId, m.videoId);
+      if (u) {
+        const slow = navigator.connection && (navigator.connection.saveData || /2g|3g/.test(navigator.connection.effectiveType || ''));
+        const mp4 = ((slow ? u.MP4_MEDIUM : u.MP4_HIGH) || u.MP4_HIGH || u.MP4_MEDIUM || u.MP4_LOW || {}).landscapeUri;
+        if (!mp4) return say('Google returned no video file for this address.');
         const cd = m.captureDate;
         $('avCap').textContent = (cd ? `· captured ${new Date(cd.year, (cd.month || 1) - 1).toLocaleString('en-US', { month: 'short', year: 'numeric' })}` : '')
           + (m.duration ? ` · ${parseFloat(m.duration)} s` : '');
         v.setAttribute('aria-label', `This is a photorealistic aerial view of ${address} provided by Google Maps.`);
-        v.poster = (u.IMAGE || {}).landscapeUri || ''; v.src = mp4;
-        $('avMsg').style.display = 'none'; v.style.display = 'block'; v.play().catch(() => {});
+        v.oncanplay = () => stage.classList.remove('loading');
+        v.onerror = () => { if (LW.aerialRun === run) say('The flyover could not be played. Close it and try again.'); };
+        v.poster = (u.IMAGE || {}).landscapeUri || ''; v.src = mp4; v.style.display = 'block'; v.play().catch(() => {});
         return;
       }
-      if (m.state === 'PROCESSING') return say('Google is still rendering this flyover (usually 1 to 3 hours after it was requested). Check back later.');
-      if (m.state === 'FAILED' || /no 3d imagery/i.test((m.error || {}).message || '')) return say('Google has no 3D imagery for this address, so there is no flyover.');
-      if (m.http === 404) return say('No flyover of this address yet. Google renders one for free in about 1 to 3 hours.', { label: 'Ask Google to render it', go: async () => {
+      if (r.state === 'PROCESSING') return say('Google is still rendering this flyover (usually 1 to 3 hours after it was requested). Check back later.');
+      if (r.state === 'FAILED' || /no 3d imagery/i.test((r.error || {}).message || '')) return say('Google has no 3D imagery for this address, so there is no flyover.');
+      if (r.http === 404) return say('No flyover of this address yet. Google renders one for free in about 1 to 3 hours.', { label: 'Ask Google to render it', go: async () => {
         say('Asking Google to render it…');
-        const r = await avCall('renderVideo', {}, { address });   // free
-        if (r.metadata && r.metadata.videoId) avIds.set(b.costarId, r.metadata.videoId);
-        if (r.state === 'ACTIVE') return LW.aerial(b);
-        say(r.error ? `Google could not start a render: ${r.error.message}` : 'Requested. Google renders it in about 1 to 3 hours; open the flyover again later.');
+        const q = await avCall('renderVideo', {}, { address });   // free
+        if (q.metadata && q.metadata.videoId) avIds.set(b.costarId, q.metadata.videoId);
+        if (q.state === 'ACTIVE') return LW.aerial(b);
+        say(q.error ? `Google could not start a render: ${q.error.message}` : 'Requested. Google renders it in about 1 to 3 hours; open the flyover again later.');
       } });
-      say(`Google Aerial View error ${m.http}: ${(m.error || {}).message || 'unknown'}` + (m.http === 403 ? ' Enable the Aerial View API for this key in Google Cloud Console.' : ''));
+      say(`Google Aerial View error ${r.http}: ${(r.error || {}).message || 'unknown'}` + (r.http === 403 ? ' Enable the Aerial View API for this key in Google Cloud Console.' : ''));
     } catch (e) { if (LW.aerialRun === run) say(`Could not reach Google Aerial View (${e.message}).`); }
   };
   $('avClose').onclick = closeAerial;
+  $('avBox').onclick = e => { if (e.target.id === 'avBox') closeAerial(); };   // a click on the backdrop closes it
+
+  // ---------- keyboard: Escape closes the topmost open panel; example requests fill the prompt ----------
+  addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || $('intro').classList.contains('show')) return;
+    const top = [['avBox', 'flex', closeAerial], ['mpBox', 'flex', () => $('mpClose').onclick()], ['modal', 'flex', () => $('mClose').onclick()],
+      ['evidence', 'block', () => $('evClose').onclick()]].find(([id, shown]) => $(id).style.display === shown);
+    if (top) { top[2](); e.stopPropagation(); }   // and nothing underneath closes with it
+    else if ($('svBox').style.display !== 'flex' && $('plateBox').style.display === 'block') $('closePlate').onclick();
+  }, true);
+  document.querySelectorAll('#examples button').forEach(x => x.onclick = () => { $('prompt').value = x.dataset.q; $('prompt').focus(); });
 
   // ---------- Daylight X-ray view toggle ----------
   LW.dayViewOn = false;
@@ -669,7 +736,7 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
   $('dayBtn').onclick = () => {
     if (!LW.dayViewOn && LW.floorsOn) $('floorsBtn').onclick();   // exclusive with Empty floors
     LW.dayViewOn = !LW.dayViewOn;
-    $('dayBtn').classList.toggle('on', LW.dayViewOn);
+    $('dayBtn').classList.toggle('on', LW.dayViewOn); $('dayBtn').setAttribute('aria-pressed', LW.dayViewOn);
     $('dayLegend').style.display = LW.dayViewOn ? 'flex' : 'none';
     if (LW.dayViewOn) daySum();
     LW.view.setDaylight(LW.dayViewOn);

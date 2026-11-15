@@ -55,16 +55,18 @@ attacks the plan before you see it. The app opens with a short, sourced screen o
 
 | Feature | Where |
 |---|---|
-| Ranked 3D map coloured by conversion score | Map / Photoreal 3D toggle |
+| Ranked 3D map coloured by conversion score, with a score legend | Map / Photoreal 3D toggle |
+| Name tags on the towers with real CoStar data (name and score) and a gold outline at their base, in both views; click a tag to open the tower | Map · Photoreal 3D |
 | Floor-plate test-fit with homes, core, lightwell and escape route | Floor plate panel |
 | Daylight X-ray: floors coloured by how much sky their windows see, lines to the blocking buildings, sun shadows | Daylight toggle · Photoreal 3D sun bar |
-| Aerial flyover of a real CoStar tower (Google Aerial View; a free check first, a billed lookup only when a video exists) and CoStar's Matterport 3D tour | Building card |
+| Aerial flyover of a real CoStar tower (Google Aerial View; one lookup, billed only when a video exists) and CoStar's Matterport 3D tour, each in a full-window viewer | Building card → See the building |
 | Live constraints (window distance, cost cap, lightwell on/off) | Left panel |
 | Editable assumptions (cost, carbon, travel limit) | Left panel → Assumptions |
 | Source tag on every **field**: COSTAR, VEXCEL, MATTERPORT, OSM, ESTIMATE, ASSUMED, SIMULATED, MISSING, YOU | Building card |
 | Evidence drawer: click any tag for the record, capture dates, car counts and confidence, scan id, assumptions | Building card |
 | "Before a site visit" checklist from the evidence gaps, plus what the consulted business asked for | Building card, memo |
 | Demo fill-in vs Real data only | Left panel |
+| Keyboard use: Tab through the controls, Enter opens a ranked tower, Esc closes the top window; visible focus ring; reduced motion respected | Everywhere |
 
 ## Quick start
 

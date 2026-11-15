@@ -10,14 +10,16 @@
 <body>
 <div id="map"></div>
 <div id="g3d" style="visibility:hidden"></div>
-<div id="views"><button data-v="map" class="on">Map</button><button data-v="g3d">Photoreal 3D</button><span class="sep"></span><button id="floorsBtn" title="Show every tower floor by floor">Empty floors</button><button id="dayBtn" title="Colour every floor by how much sky its windows see">Daylight</button></div>
+<div id="tags"></div>
+<div id="legend" title="Tower colour = conversion score (0 to 100)"><span>100</span><i></i><span>0</span><b>score</b></div>
+<div id="views" role="toolbar" aria-label="Map views"><button data-v="map" class="on" aria-pressed="true">Map</button><button data-v="g3d" aria-pressed="false">Photoreal 3D</button><span class="sep"></span><button id="floorsBtn" aria-pressed="false" title="Show every tower floor by floor">Empty floors</button><button id="dayBtn" aria-pressed="false" title="Colour every floor by how much sky its windows see">Daylight</button></div>
 <div id="floorsLegend"><span><i style="background:#f5b942"></i>Empty floor</span><span><i style="background:#3a4766;opacity:.6"></i>Leased floor</span><span class="muted" id="floorsSum"></span></div>
 <div id="dayLegend"><span><i style="background:#f5b942"></i>All homes see the sky</span><span><i style="background:#3a4766"></i>None do</span><span><i style="background:#3b4254"></i>No data</span><span class="muted" id="daySum"></span></div>
-<div id="viewNote"></div>
+<div id="viewNote" role="status"></div>
 <div id="sunBar"><label class="chk"><input type="checkbox" id="sunOn"> Sun &amp; shadows</label>
   <select id="sunDay" aria-label="Day of the year"><option value="11">Dec 21</option><option value="5">Jun 21</option></select>
   <input id="sunHour" type="range" min="7" max="19" step="0.25" value="15" aria-label="Hour, Houston time"><b id="sunL"></b></div>
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <aside id="left">
   <h1><i></i>Lightwell</h1>
@@ -27,23 +29,28 @@
   <div class="note" id="dataNote"></div>
 
   <h2>Ask the agent</h2>
-  <textarea id="prompt">Find offices downtown I can turn into homes for under $300k a home.</textarea>
+  <textarea id="prompt" aria-label="Your request, in plain English">Find offices downtown I can turn into homes for under $300k a home.</textarea>
+  <div id="examples" class="chips" aria-label="Example requests">
+    <button data-q="Find offices downtown I can turn into homes for under $300k a home.">Under $300k a home</button>
+    <button data-q="Only towers with real CoStar data and at least 200 homes, under $300k a home.">Real CoStar data, 200+ homes</button>
+    <button data-q="Find offices I can turn into homes for under $350k a home, only homes that see the sky.">Strict daylight</button></div>
   <div class="btns"><button id="run" class="primary" disabled>Loading…</button></div>
   <div id="mode" class="mode">Checking for the agent backend…</div>
   <div id="team" title="The agent team: lights up while each sub-agent works"><span data-a="planner">Planner</span><span data-a="market">Market</span><span data-a="feas">Feasibility</span><span data-a="policy">Policy</span><span data-a="deals">Deals</span><span data-a="red">Red team</span></div>
-  <div id="log"></div>
+  <div id="log" aria-live="polite"></div>
 
   <h2>Brief (live)</h2>
+  <div class="hint">The rules for this search. Change one and every tower re-scores.</div>
   <div class="note brief" id="briefText"></div>
-  <label class="row">Max distance to a window <b id="dL"></b></label>
+  <label class="row" for="dist">Max distance to a window <b id="dL"></b></label>
   <input id="dist" type="range" min="25" max="40" value="30">
-  <label class="row">Cost cap per home <b id="cL"></b></label>
+  <label class="row" for="cap">Cost cap per home <b id="cL"></b></label>
   <input id="cap" type="range" min="150" max="450" step="10" value="300">
   <label class="row">Minimum homes per tower <input id="minHomes" type="number" min="1" max="5000" value="20"></label>
   <label class="chk"><input type="checkbox" id="lw" checked> Allow lightwell cuts</label>
   <label class="chk"><input type="checkbox" id="useParking" checked> Use parking evidence (Vexcel)</label>
   <label class="chk"><input type="checkbox" id="dayOn" checked> Check daylight from neighbours</label>
-  <label class="row">Max sky blocked by neighbours <b id="dayL"></b></label>
+  <label class="row" for="dayLim">Max sky blocked by neighbours <b id="dayL"></b></label>
   <input id="dayLim" type="range" min="20" max="35" value="25">
   <label class="chk"><input type="checkbox" id="dayStrict"> Strict daylight: don't count dim homes</label>
   <div id="require" class="chk req">Require real:
@@ -64,10 +71,13 @@
   </div>
   <div id="exports" class="btns"><button id="portfolio">Portfolio memo</button><button id="csv">Export CSV</button></div>
   <h2>Best conversion candidates</h2>
-  <div id="ranking"><div class="note">Run the agent to rank downtown towers.</div></div>
+  <div id="ranking"><div class="guide">
+    <div><b>1</b><span>Ask in plain English, or just press <i>Run agent</i>.</span></div>
+    <div><b>2</b><span>Click a tower on the map or in this list for its numbers and the evidence behind them.</span></div>
+    <div><b>3</b><span>Approve the owner memo, or export the shortlist.</span></div></div></div>
 </aside>
 
-<div id="plateBox">
+<div id="plateBox" role="dialog" aria-labelledby="plateTitle">
   <header><b id="plateTitle">Typical floor</b>
     <div style="display:flex;gap:6px"><button id="cut">Cut a lightwell</button><button id="closePlate">Close</button></div></header>
   <canvas id="plate" width="1140" height="640"></canvas>
@@ -78,7 +88,7 @@
   <div id="plateStats"></div>
 </div>
 
-<div id="svBox">
+<div id="svBox" role="dialog" aria-labelledby="svTitle">
   <header><div><b id="svTitle">Street View</b><small id="svDist"></small></div>
     <div style="display:flex;gap:6px"><button id="svFace">Face the tower</button><button id="svClose">Close</button></div></header>
   <div id="pano"></div>
@@ -86,18 +96,18 @@
   <div id="svMsg"></div>
 </div>
 
-<div id="mpBox" role="dialog" aria-labelledby="mpTitle">
+<div id="mpBox" role="dialog" aria-modal="true" aria-labelledby="mpTitle"><div class="win">
   <header><div><b id="mpTitle">3D tour</b><small id="mpNote"></small></div>
     <div style="display:flex;gap:6px;align-items:center"><select id="mpModel" aria-label="Which scan"></select>
       <a id="mpOpen" class="btnlink" target="_blank" rel="noopener">Open in Matterport</a><button id="mpClose">Close</button></div></header>
-  <iframe id="mpFrame" title="Matterport 3D tour" allow="xr-spatial-tracking; fullscreen" allowfullscreen></iframe>
-</div>
+  <iframe id="mpFrame" title="Matterport 3D tour" allow="xr-spatial-tracking; fullscreen"></iframe>
+</div></div>
 
-<div id="avBox" role="dialog" aria-labelledby="avTitle">
+<div id="avBox" role="dialog" aria-modal="true" aria-labelledby="avTitle"><div class="win">
   <header><div><b id="avTitle">Aerial flyover</b><small id="avNote"></small></div><button id="avClose">Close</button></header>
-  <div id="avStage"><video id="avVideo" controls muted autoplay loop playsinline></video><div id="avMsg"></div></div>
+  <div id="avStage"><video id="avVideo" controls muted autoplay loop playsinline preload="auto"></video><div id="avMsg" role="status"></div></div>
   <footer><span translate="no">Google Maps</span><span>Aerial View</span><span id="avCap"></span></footer>
-</div>
+</div></div>
 
 <div id="intro" role="dialog" aria-modal="true" aria-labelledby="introTitle"><div class="ibox">
   <div class="kicker">Houston · 2026</div>
@@ -133,9 +143,9 @@
     A screening tool, not legal advice.</div>
 </div></div>
 
-<div id="evidence"><header><b id="evTitle">Evidence</b><button id="evClose">Close</button></header><div id="evBody"></div></div>
+<div id="evidence" role="dialog" aria-labelledby="evTitle"><header><b id="evTitle">Evidence</b><button id="evClose">Close</button></header><div id="evBody"></div></div>
 
-<div id="modal"><div class="box">
+<div id="modal" role="dialog" aria-modal="true" aria-labelledby="memoTitle"><div class="box">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><b id="memoTitle">Memo</b>
     <div style="display:flex;gap:6px"><button id="copy">Copy</button><button id="dl">Download .md</button><button id="mClose">Close</button></div></div>
   <div id="memo"></div>

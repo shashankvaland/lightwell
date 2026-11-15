@@ -75,6 +75,7 @@
     $('log').innerHTML = ''; document.querySelectorAll('#team span').forEach(x => x.classList.remove('on', 'used'));
     if (LW.showMoves) LW.showMoves(null, null, true); LW.scored = false; LW.flagsShown = false; LW.reviewed = null;
     LW.B.forEach(b => { b.score = null; b.plan = null; }); LW.B.forEach(b => LW.view.paint(b)); LW.view.setFlags([]);
+    LW.tags.render(); $('legend').style.display = 'none';
   }
   async function reveal() {
     LW.B.forEach(LW.analyze); LW.scored = true;

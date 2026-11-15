@@ -22,6 +22,61 @@
     return out;
   };
 
+  // The two views cross-fade: the outgoing one fades out, then stops taking space and clicks.
+  function fade(id, on, view) {
+    const el = document.getElementById(id); clearTimeout(view._hide);
+    el.style.opacity = on ? 1 : 0; el.style.pointerEvents = on ? '' : 'none';
+    if (on) el.style.visibility = 'visible'; else view._hide = setTimeout(() => { el.style.visibility = 'hidden'; }, 360);
+  }
+
+  // ---- name tags: the real (CoStar) towers and the selected tower carry a label at their roof, in both views ----
+  // One HTML overlay (#tags), so the labels stay crisp and clickable. The active view says where each roof is on screen
+  // (roofXY); a tag whose name would cover a more important one (selected, passing, higher score) shrinks to its chip.
+  LW.tags = {
+    list: [],
+    render() {
+      const box = document.getElementById('tags'); box.textContent = '';
+      this.list = (LW.B || []).filter(b => b.real.market || b === LW.selected).map(b => {
+        const el = document.createElement('button'), sc = LW.scored && b.score != null;
+        el.className = 'ttag' + (b === LW.selected ? ' sel' : '') + (sc && !b.pass ? ' fail' : ''); el.tabIndex = -1;
+        el.innerHTML = (sc ? `<span class="sc" style="background:${LW.hex(LW.scoreRGB(b.score))};color:${LW.scoreInk(b.score)}">${b.score}</span>` : '<span class="dm">◆</span>')
+          + `<span class="nm">${LW.esc(b.label)}</span>`;
+        el.title = b.label + (sc ? ` · score ${b.score}${b.pass ? ' · passes the brief' : ''}` : '') + (b.real.market ? ' · real CoStar data' : '');
+        el.onclick = () => LW.onSelect(b, true);
+        box.appendChild(el);
+        return { b, el, w: el.offsetWidth, off: false, key: '' };
+      });
+      this.place();
+    },
+    place() {
+      const v = LW.view; if (!v || !v.ready || !this.list.length) return;
+      const W = innerWidth, H = innerHeight, side = W > 980 ? 340 : 0, placed = [], rank = t => (t.b === LW.selected ? 1e6 : 0) + (t.b.pass ? 1e3 : 0) + (t.b.score || 0);
+      const hit = r => placed.some(q => r[0] < q[2] && r[2] > q[0] && r[1] < q[3] && r[3] > q[1]);
+      const hide = t => { if (!t.off) { t.el.style.display = 'none'; t.off = true; } };
+      for (const t of [...this.list].sort((a, c) => rank(c) - rank(a))) {
+        const xy = v.roofXY(t.b), el = t.el, sel = t.b === LW.selected;
+        if (!xy || xy[0] < side + 12 || xy[0] > W - side - 12 || xy[1] > H + 30 || (xy[1] < 70 && !sel)) { hide(t); continue; }
+        const rx = Math.round(xy[0]), ry = Math.max(Math.round(xy[1]), 108), half = t.w / 2;
+        const x = Math.round(Math.min(Math.max(rx, side + 8 + half), W - side - 8 - half));   // the whole tag stays beside the panels
+        // stack upwards past the tags already placed (the stem grows); when four rows are taken, shrink to the chip.
+        // A tag is 28 px tall and sits 12 px above the roof; boxes carry a 2 px margin so neighbours never touch.
+        let up = 0, box;
+        do { box = [x - half - 2, ry - 42 - up, x + half + 2, ry - 10 - up]; } while (!sel && hit(box) && (up += 32) <= 96 && ry - 42 - up >= 62);
+        const mini = hit(box) && !sel;   // no free row below the view buttons
+        if (mini) { up = 0; box = [rx - 16, ry - 42, rx + 16, ry - 10]; if (hit(box)) { hide(t); continue; } }
+        placed.push(box);
+        const key = `${mini ? rx : x},${ry - 12 - up},${up},${mini},${sel}`;
+        if (t.off) { el.style.display = ''; t.off = false; }
+        if (t.key === key) continue;
+        t.key = key; el.classList.toggle('mini', mini);
+        el.style.zIndex = sel ? 5000 : Math.max(1, ry - 12 - up);   // a lower tag covers the stem coming down from a tag above it
+        el.style.transform = `translate3d(${mini ? rx : x}px,${ry - 12 - up}px,0) translate(-50%,-100%)`;
+        el.style.setProperty('--stem', 12 + up + 'px'); el.style.setProperty('--sx', (mini ? 0 : rx - x) + 'px');
+      }
+    },
+  };
+  addEventListener('resize', () => LW.tags.place());
+
   // ---------------- MapLibre ----------------
   views.map = {
     ready: false,
@@ -31,24 +86,47 @@
         const map = this.map = new maplibregl.Map({ container: 'map', style: 'https://tiles.openfreemap.org/styles/dark',
           center: CENTER, zoom: 15.2, pitch: 58, bearing: -28, antialias: true });
         map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+        // the base style asks for a pattern image it doesn't ship: give it a blank one instead of a console warning
+        map.on('styleimagemissing', e => { if (!map.hasImage(e.id)) map.addImage(e.id, { width: 1, height: 1, data: new Uint8Array(4) }); });
         map.once('style.load', () => {
-          const gj = LW.geo, cand = new Set(LW.B.map(b => b.osmId));
-          gj.features.forEach(f => { f.properties.cand = cand.has(f.properties.id); });
+          const gj = LW.geo;
           map.getStyle().layers.filter(l => l.type === 'fill-extrusion').forEach(l => map.setLayoutProperty(l.id, 'visibility', 'none'));
+          // one fixed light from the south-east: every building gets a bright and a shaded side, so its edges read clearly
+          map.setLight({ anchor: 'map', color: '#ffffff', intensity: 0.7, position: [1.5, 150, 50] });
+          this._mark();
           map.addSource('bld', { type: 'geojson', data: gj, promoteId: 'id' });
+          // real (CoStar) towers: a pool of gold light around the base, under the buildings
+          map.addLayer({ id: 'csGlow', type: 'line', source: 'bld', filter: ['get', 'cs'], paint: { 'line-color': '#f5b942', 'line-width': 14, 'line-blur': 10, 'line-opacity': 0.6 } });
+          map.addLayer({ id: 'csLine', type: 'line', source: 'bld', filter: ['get', 'cs'], paint: { 'line-color': '#ffd98a', 'line-width': 1.5, 'line-opacity': 0.9 } });
           map.addLayer({ id: 'bld', type: 'fill-extrusion', source: 'bld', paint: {
             'fill-extrusion-color': ['case', ['boolean', ['feature-state', 'sel'], false], '#ffffff',
-              ['to-color', ['coalesce', ['feature-state', 'color'], ['case', ['get', 'cand'], '#4a5a80', '#232c40']]]],
-            'fill-extrusion-height': ['get', 'height'], 'fill-extrusion-opacity': 0.93 } });
+              ['to-color', ['coalesce', ['feature-state', 'color'], ['case', ['get', 'cand'], '#4a5a80', '#27314a']]]],
+            'fill-extrusion-height': ['get', 'height'], 'fill-extrusion-opacity': 0.95 } });
           map.addSource('flags', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
           map.addLayer({ id: 'flags', type: 'circle', source: 'flags', paint: { 'circle-radius': 9, 'circle-color': '#ef5d6f', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
           map.on('click', 'bld', e => { const b = LW.byOsm.get(e.features[0].properties.id); LW.onSelect(b || null, false); });
           map.on('mouseenter', 'bld', () => map.getCanvas().style.cursor = 'pointer');
           map.on('mouseleave', 'bld', () => map.getCanvas().style.cursor = '');
-          this.ready = true; resolve();
+          map.on('move', () => { if (LW.view === this) LW.tags.place(); });
+          this.ready = true; LW.tags.render(); resolve();
         });
       });
       return this._init;
+    },
+    // Mark which footprints are candidate towers and which have CoStar data; redone when the tower list changes (data-mode switch).
+    _mark() {
+      const cand = new Set(LW.B.map(b => b.osmId)), cs = new Set(LW.B.filter(b => b.real.market).map(b => b.osmId));
+      LW.geo.features.forEach(f => { f.properties.cand = cand.has(f.properties.id); f.properties.cs = cs.has(f.properties.id); });
+    },
+    setTowers() { if (!this.ready) return; this._mark(); this.map.getSource('bld').setData(LW.geo); this.map.removeFeatureState({ source: 'bld' }); },
+    // Where a tower's roof is on screen. The map has no 3D anchors, so the roof is the ground point lifted by the building
+    // height times the local screen scale (from how one metre east and one metre north project around that point).
+    roofXY(b) {
+      const m = this.map, d = 1e-3, p = m.project(b.center), e = m.project([b.center[0] + d, b.center[1]]), n = m.project([b.center[0], b.center[1] + d]);
+      const mx = d * 111320 * Math.cos(b.center[1] * Math.PI / 180), my = d * 110540;
+      const ex = (e.x - p.x) / mx, ey = (e.y - p.y) / mx, nx = (n.x - p.x) / my, ny = (n.y - p.y) / my;
+      const a = ex * ex + ey * ey, c = nx * nx + ny * ny, o = ex * nx + ey * ny;
+      return [p.x, p.y - b.heightM * Math.pow((a - c) * (a - c) + 4 * o * o, 0.25)];
     },
     paint(b) { if (this.ready) this.map.setFeatureState({ source: 'bld', id: b.osmId }, { color: b.score == null || !LW.scored ? null : LW.hex(LW.scoreRGB(b.score)) }); },
     select(b, prev) {
@@ -62,7 +140,7 @@
     overview() { if (this.ready) this.map.easeTo({ zoom: 14.8, pitch: 55, bearing: this.map.getBearing() - 20, duration: 1500 }); },
     setFlags(list) { if (this.ready) this.map.getSource('flags').setData({ type: 'FeatureCollection',
       features: list.map(b => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: b.center } })) }); },
-    show(on) { document.getElementById('map').style.visibility = on ? 'visible' : 'hidden'; if (on && this.ready) this.map.resize(); },
+    show(on) { fade('map', on, this); if (on && this.ready) this.map.resize(); },
     // tenant moves: floating gold arcs (small extruded boxes) with a white pulse running along them
     setMoves(plan) {
       if (!this.ready) return; const map = this.map;
@@ -219,12 +297,15 @@
         navigationHelpButton: false, animation: false, timeline: false, fullscreenButton: false, infoBox: false, selectionIndicator: false };
       if (wantGoogle) opts.globe = false;
       const v = this.viewer = new Cesium.Viewer('g3d', opts);
+      // draw at the screen's real resolution (Retina), capped at 2x: otherwise the photoreal city is rendered at half size and looks soft
+      v.useBrowserRecommendedResolution = false; v.resolutionScale = Math.min(1, 2 / (window.devicePixelRatio || 1));
+      if (v.scene.msaaSamples < 4) v.scene.msaaSamples = 4;
       v.scene.backgroundColor = Cesium.Color.fromCssColorString('#0b111d');
       if (v.scene.globe) { v.scene.globe.baseColor = Cesium.Color.fromCssColorString('#121a2b'); v.scene.globe.showGroundAtmosphere = false; }
       this.mode = 'osm';
       if (wantGoogle) {
         try {
-          const ts = await Cesium.createGooglePhotorealistic3DTileset();
+          const ts = await Cesium.createGooglePhotorealistic3DTileset({ onlyUsingWithGoogleGeocoder: true });   // this page has no geocoder
           v.scene.primitives.add(ts); this.mode = 'google'; this.tileset = ts;
         } catch (e) {
           this.error = 'Google 3D tiles did not load (' + (e.message || e) + '). Showing OpenStreetMap buildings instead.';
@@ -235,7 +316,8 @@
       }
       // Houston ground sits ~11 m below the WGS84 ellipsoid; Google tiles use true heights, the fallback uses 0.
       this.h0 = this.mode === 'google' ? -11 : 0;
-      this._buildPrimitives();
+      this._buildTowers();
+      this.flags = new Cesium.CustomDataSource('flags'); v.dataSources.add(this.flags);
       v.camera.setView({ destination: Cesium.Cartesian3.fromDegrees(-95.3745, 29.7395, 950),
         orientation: { heading: Cesium.Math.toRadians(18), pitch: Cesium.Math.toRadians(-32), roll: 0 } });
       const h = new Cesium.ScreenSpaceEventHandler(v.scene.canvas);
@@ -244,7 +326,7 @@
         const id = p && typeof p.id === 'string' ? p.id : null;   // 'b:<idx>' tower, 'f:<idx>:<floor>' floor slab
         LW.onSelect(id && /^[bf]:/.test(id) ? LW.B[+id.split(':')[1]] : null, false);
       }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
-      v.scene.postRender.addEventListener(() => this._flush());
+      v.scene.postRender.addEventListener(() => { this._flush(); if (LW.view === this) LW.tags.place(); });
       this.ready = true;
     },
     _poly(ring, h0, h1, color, id, vf) {
@@ -253,8 +335,8 @@
         polygonHierarchy: new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray(pts)), height: h0, extrudedHeight: h1, vertexFormat: vf }),
         attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(color) } });
     },
-    _buildPrimitives() {
-      const v = this.viewer, google = this.mode === 'google';
+    _buildTowers() {
+      const v = this.viewer, google = this.mode === 'google'; this._towersFor = LW.B;
       if (google) {
         // Paint the real photoreal buildings: a classification volume around each candidate tower colours whatever tiles fall inside it.
         this.prim = v.scene.primitives.add(new Cesium.ClassificationPrimitive({ asynchronous: false,
@@ -265,20 +347,31 @@
         const others = LW.geo.features.filter(f => !cand.has(f.properties.id)).map(f =>
           this._poly(f.geometry.coordinates[0], 0, f.properties.height, Cesium.Color.fromCssColorString('#2a3550'), 'o:' + f.properties.id, vf));
         // sun shadows: the boxes cast them onto the ground; they don't receive them (on flat boxes that shows as striped "shadow acne")
-        v.scene.primitives.add(new Cesium.Primitive({ asynchronous: false, geometryInstances: others,
+        this.others = v.scene.primitives.add(new Cesium.Primitive({ asynchronous: false, geometryInstances: others,
           appearance: new Cesium.PerInstanceColorAppearance({ translucent: false, flat: false }), shadows: Cesium.ShadowMode.CAST_ONLY }));
         this.prim = v.scene.primitives.add(new Cesium.Primitive({ asynchronous: false,
           geometryInstances: LW.B.map(b => this._poly(b.ring, 0, b.heightM, this._base(), 'b:' + b.idx, vf)),
           appearance: new Cesium.PerInstanceColorAppearance({ translucent: false, flat: false }), shadows: Cesium.ShadowMode.CAST_ONLY }));
       }
-      this.flags = new Cesium.CustomDataSource('flags'); v.dataSources.add(this.flags);
     },
-    _base() { return this.mode === 'google' ? Cesium.Color.WHITE.withAlpha(0.12) : Cesium.Color.fromCssColorString('#4a5a80'); },
+    // The candidate list changed (data-mode switch): rebuild the tower volumes so their ids and colours match LW.B again.
+    setTowers() {
+      if (!this.ready || this._towersFor === LW.B) return;
+      for (const k of ['prim', 'others', 'floorsPrim', 'dayPrim']) if (this[k]) { this.viewer.scene.primitives.remove(this[k]); this[k] = null; }
+      this.colors.clear(); this._buildTowers(); this.setFloors(LW.floorsOn); this.setDaylight(LW.dayViewOn);
+    },
+    // On the photoreal city the result is a light tint, so the real building still shows through; boxes are solid.
+    _base() { return this.mode === 'google' ? Cesium.Color.WHITE.withAlpha(0.06) : Cesium.Color.fromCssColorString('#4a5a80'); },
     _colorFor(b) {
-      if (LW.selected === b) return Cesium.Color.WHITE.withAlpha(this.mode === 'google' ? 0.6 : 1);
+      if (LW.selected === b) return Cesium.Color.WHITE.withAlpha(this.mode === 'google' ? 0.45 : 1);
       if (b.score == null || !LW.scored) return this._base();
       const c = Cesium.Color.fromCssColorString(LW.hex(LW.scoreRGB(b.score)));
-      return this.mode === 'google' ? c.withAlpha(0.55) : c;
+      return this.mode === 'google' ? c.withAlpha(0.3) : c;
+    },
+    // Where a tower's roof is on screen (null when it is behind the camera).
+    roofXY(b) {
+      const w = Cesium.SceneTransforms.worldToWindowCoordinates(this.viewer.scene, Cesium.Cartesian3.fromDegrees(b.center[0], b.center[1], this.h0 + b.heightM));
+      return w ? [w.x, w.y] : null;
     },
     _flush() {
       if (!this.prim || !this.prim.ready || !this.colors.size) return;
@@ -300,7 +393,7 @@
         point: { pixelSize: 14, color: Cesium.Color.fromCssColorString('#ef5d6f'), outlineColor: Cesium.Color.WHITE, outlineWidth: 2,
           disableDepthTestDistance: Number.POSITIVE_INFINITY } });
     },
-    show(on) { document.getElementById('g3d').style.visibility = on ? 'visible' : 'hidden'; if (!on) this.stopOrbit(); },
+    show(on) { fade('g3d', on, this); if (!on) this.stopOrbit(); },
 
     setMoves(plan) {
       if (!this.ready) return;
