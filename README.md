@@ -61,6 +61,15 @@ attacks the plan before you see it. The app opens with a short, sourced screen o
 15. **Human in the loop:** correct any value, then approve the memo the agent reviewed. The memo is marked *not
    reviewed* as soon as the brief, an assumption, a correction or the lightwell choice changes. Export a portfolio memo
    and a CSV with a source column per field.
+16. **Measured from the inside (Matterport):** `backend/matterport.py` reads CoStar's Matterport scans of each tower and
+    measures the clear ceiling height of the scanned office space. That measurement, not the floor-to-floor estimate,
+    then decides the height test, and the agent stops asking you for a height the scan already settles (*"the scan
+    measured 9 ft clear ceilings, so homes fit: settled without a site visit"*).
+17. **Record cross-check:** compares independent sources about the same tower (CoStar property, tenancy and sale records,
+    Matterport scans, the OpenStreetMap footprint and height, aerial parking counts) and lists where two of them
+    disagree, with both sources and both values. Observations to investigate, never findings.
+18. **Remembers what you taught it:** the brief you settled on and the values you corrected are kept in your browser and
+    restored on the next visit; the agent says so and does not ask again. *Forget* clears it.
 
 | Feature | Where |
 |---|---|
@@ -68,6 +77,9 @@ attacks the plan before you see it. The app opens with a short, sourced screen o
 | Name tags on the towers with real CoStar data (name and score) and a gold outline at their base, in both views; click a tag to open the tower | Map · Photoreal 3D |
 | Floor-plate test-fit with homes, core, lightwell and escape route | Floor plate panel |
 | **Home designer:** click any home on the floor plate (or a floor in the card's stack or the 3D floor views) for 3-5 concept apartment plans: rooms, furniture, sizes, rule checks, wet-wall and cost notes; filter by bedrooms, baths, work nook, accessible bath, or describe it in words; save a plan for a run of floors. **Shift+click** (or *Select several*) 2-3 neighbouring homes on the same wall and *Merge and design* to plan them as one bigger family home | Building card → *Design homes* · Floor plate |
+| Clear ceiling height measured in CoStar's Matterport scans, used by the height test (MATTERPORT tag, evidence with the scans used) | Building card → Building |
+| Record cross-check: where two sources disagree, each with both values (RECORD CHECK tag) | Building card · agent's Forensics step · memo |
+| Memory between visits: your brief and corrections come back, with a *Forget* button | Left panel → Brief |
 | Daylight X-ray: floors coloured by how much sky their windows see, lines to the blocking buildings, sun shadows | Daylight toggle · Photoreal 3D sun bar |
 | Aerial flyover of a real CoStar tower (Google Aerial View; one lookup, billed only when a video exists) and CoStar's Matterport 3D tour, each in a full-window viewer | Building card → See the building |
 | Live constraints (window distance, cost cap, lightwell on/off) | Left panel |
@@ -158,7 +170,7 @@ python backend/import_data.py    # -> lightwell/data/real_overlay.js; reload the
 The towers then carry their CoStar name, class and rating, percent leased (CoStar's formula, from the listings), empty
 floors, slab-to-slab height, sprinklers, year built and renovated, and their real tenants for the tenant-move planner. A
 building CoStar records as converted never passes. [real-data/README.md](real-data/README.md) says how each value is
-made, how to add Matterport floor plates (`backend/matterport.py`) and Vexcel counts, and lists the CSV columns for
+made, how to add Matterport measurements (`backend/matterport.py`) and Vexcel counts, and lists the CSV columns for
 adding data by hand:
 ```bash
 python backend/import_data.py
@@ -174,7 +186,7 @@ The agent's CoStar, Vexcel and Matterport tools read these imported values; they
 | Key | Put it in | Used for |
 |---|---|---|
 | Matterport **SDK key** | `lightwell/config.js` → `MATTERPORT_SDK_KEY` | not needed today: the 3D tour of CoStar's scans opens without it (kept for a future feature that drives the tour with the SDK) |
-| Matterport **API key** | `.env` → `MATTERPORT_API_KEY` | `backend/matterport.py`: floor plates measured from the scans |
+| Matterport **API key** | `.env` → `MATTERPORT_API_KEY` | `backend/matterport.py`: ceiling height and floor area measured from the scans |
 | Matterport **API token** | `.env` → `MATTERPORT_API_TOKEN` | same (Matterport's names: API Token ID and Token Secret) |
 | Vexcel **api_key** | `.env` → `VEXCEL_API_KEY` | aerial parking images (the download step needs Vexcel's quickstart) |
 | Anthropic API key | `.env` → `ANTHROPIC_API_KEY` | the Claude agent (deepagents) and `count_cars.py` |
@@ -237,6 +249,8 @@ lightwell/              the app (open lightwell/index.html)
   js/shuffle.js         Texas fast-track screen, tenants, tenant-move planner, red team
   js/scout.js           data scout: estimates for towers with no CoStar record, which towers to request next
   js/ask.js             Ask Lightwell chat (Claude via /api/ask, or offline answers in the browser)
+  js/records.js         record cross-check: where two independent sources about a tower disagree
+  js/memory.js          remembers your brief and corrections between visits (this browser only)
   js/intro.js           start screen: the Texas law and Houston's empty offices (sourced)
   config.example.js     copy to config.js for your keys
   consult.js            what the business we consulted asked for (Peri track); feeds the checklist and memo
@@ -251,7 +265,7 @@ backend/
   app.py                FastAPI server streaming agent steps (SSE)
   import_data.py        joins real-data/*.csv to the map
   costar_kit.py         CoStar data kit -> real-data/costar.csv + tenants.csv
-  matterport.py         Matterport Model API -> real-data/interiors.csv (floor plates from scans)
+  matterport.py         Matterport Model API -> real-data/interiors.csv (ceiling height, scan area and extent)
   env.py                loads keys from the project's .env
   count_cars.py         Claude vision car counter for aerial images
 real-data/              CSV templates and column guide
@@ -264,8 +278,17 @@ lightwell.html, lightwell-houston.html, houston-map.html
 
 ## Tracks
 
-Best Sustainability Hack (main) · CoStar *AI for the Built World* · LangChain *Best use of deepagents* ·
-Amazon *Best Practical AI Innovation* · Peri *Forward Deployed* · Arlequin *AI-Driven Forensics*
+| Track | What it asks for | Where Lightwell answers it |
+|---|---|---|
+| **Best Sustainability Hack** (our required track) | technology for an environmental problem | reusing empty towers instead of building new: embodied carbon avoided per tower and in total (an estimate; the assumptions are editable), homes without new land |
+| **CoStar** *Inside and Out: AI for the Built World* | at least two of CoStar / Matterport / Vexcel used together; agentic; a real user; spatial and visual | CoStar records choose and qualify the towers, Matterport scans measure the ceiling that decides the height test, and the record cross-check compares the two; the agent plans, asks, replans and red-teams; 3D map, floor plates, Daylight X-ray, tour and flyover |
+| **LangChain** *Best use of deepagents* | a deepagent | `create_deep_agent` planner with six sub-agents (market, data scout, feasibility, policy, deals, red team) and 20+ tools, plus the Ask Lightwell chat |
+| **Amazon** *Best Practical AI Innovation* | agentic, real impact, adapts, easy to use | multi-step plan with a human question in the middle; replans from your answer; remembers your brief and corrections between visits |
+| **Peri** *Forward Deployed* | a real business you consulted, named, with evidence | `lightwell/consult.js` holds the business, the person and what they asked for; it leads every checklist and memo ([Doc/PERI_INTERVIEW.md](Doc/PERI_INTERVIEW.md)) |
+| **Arlequin** *AI-Driven Forensics* | evidence an investigator can check | the record cross-check and the occupancy check: each finding names both sources. Demo mode runs on public (OpenStreetMap) and synthetic data. These are observations to investigate, never accusations |
+
+[Doc/TRACKS.md](Doc/TRACKS.md) has the detail, [Doc/DEMO_SCRIPT.md](Doc/DEMO_SCRIPT.md) a three-minute demo, and
+[Doc/DEVPOST_DRAFT.md](Doc/DEVPOST_DRAFT.md) a draft of the submission text.
 
 ## Limits
 
