@@ -190,7 +190,7 @@
       for (const b of LW.B) {
         if (LW.srcOf(b, 'vacant') === 'MISSING') continue;   // unknown is not "fully leased": don't draw it
         const fh = b.heightM / b.floors, empty = new Set(b.vacantFloors);
-        for (let f = 1; f <= b.floors; f++) feats.push({ type: 'Feature', properties: { bidx: b.idx, empty: empty.has(f),
+        for (let f = 1; f <= b.floors; f++) feats.push({ type: 'Feature', properties: { bidx: b.idx, f, empty: empty.has(f),
           base: (f - 1) * fh, top: f * fh - Math.min(0.8, fh * 0.2) }, geometry: { type: 'Polygon', coordinates: [b.ring] } });
       }
       return { type: 'FeatureCollection', features: feats };
@@ -207,7 +207,7 @@
         map.addLayer({ id: 'floorsEmpty', type: 'fill-extrusion', source: 'floors', filter: ['get', 'empty'],
           paint: { ...paint('#fff0b8', '#f5b942'), 'fill-extrusion-opacity': 0.95 } }, 'flags');
         for (const id of ['floorsLeased', 'floorsEmpty']) {
-          map.on('click', id, e => LW.onSelect(LW.B[e.features[0].properties.bidx], false));
+          map.on('click', id, e => { const q = e.features[0].properties; LW.pickedFloor = { idx: q.bidx, f: q.f }; LW.onSelect(LW.B[q.bidx], false); });
           map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer');
           map.on('mouseleave', id, () => map.getCanvas().style.cursor = '');
         }
@@ -248,7 +248,7 @@
         map.addLayer({ id: 'dayBlk', type: 'circle', source: 'dayLines', filter: ['==', ['geometry-type'], 'Point'],
           paint: { 'circle-radius': 6, 'circle-color': '#ef5d6f', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 } }, 'flags');
         const pop = this._dayPop = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10 });
-        map.on('click', 'daySlabs', e => LW.onSelect(LW.B[e.features[0].properties.bidx], false));
+        map.on('click', 'daySlabs', e => { const q = e.features[0].properties; LW.pickedFloor = { idx: q.bidx, f: q.f }; LW.onSelect(LW.B[q.bidx], false); });
         map.on('mousemove', 'daySlabs', e => {
           const q = e.features[0].properties, b = LW.B[q.bidx]; if (!b) return;
           map.getCanvas().style.cursor = 'pointer';
@@ -324,6 +324,7 @@
       h.setInputAction(ev => {
         const p = v.scene.pick(ev.position);
         const id = p && typeof p.id === 'string' ? p.id : null;   // 'b:<idx>' tower, 'f:<idx>:<floor>' floor slab
+        if (id && id[0] === 'f') { const q = id.split(':'); LW.pickedFloor = { idx: +q[1], f: +q[2] }; }   // the home designer starts on this floor
         LW.onSelect(id && /^[bf]:/.test(id) ? LW.B[+id.split(':')[1]] : null, false);
       }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
       v.scene.postRender.addEventListener(() => { this._flush(); if (LW.view === this) LW.tags.place(); });

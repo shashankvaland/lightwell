@@ -16,6 +16,7 @@
     plate: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h8v10M12 4v6M12 15h8"/>',
     edit: '<path d="M4 20l1-4L16.5 4.5l3 3L8 19zM14 7l3 3"/>',
     memo: '<path d="M7 3h7l4 4v14H7zM14 3v4h4M9.5 14.5l2 2 3.5-4"/>',
+    home: '<path d="M3.5 11.5L12 4l8.5 7.5M6 10v10h12V10M10 20v-5.5h4V20"/>',
   };
   const ic = k => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
   LW.scored = false; LW.flagsShown = false; LW.selected = null; LW.reviewed = null;
@@ -102,7 +103,7 @@
     let s = `<svg width="${W + 4}" height="${H + 4}" viewBox="-2 -2 ${W + 4} ${H + 4}" role="img" aria-label="Floor stack">`;
     for (let f = 1; f <= n; f++) {
       const y = H - f * fh, c = f === 1 ? '#2c8c88' : empty.has(f) ? '#f5b942' : '#3a4766';
-      s += `<rect x="0" y="${y.toFixed(1)}" width="${W}" height="${Math.max(0.6, fh - (fh > 3 ? 1 : 0.3)).toFixed(1)}" fill="${c}"/>`;
+      s += `<rect x="0" y="${y.toFixed(1)}" width="${W}" height="${Math.max(0.6, fh - (fh > 3 ? 1 : 0.3)).toFixed(1)}" fill="${c}"${f >= 2 && LW.designer ? ` data-f="${f}" style="cursor:pointer"><title>Floor ${f}${empty.has(f) ? ' · empty' : ''}: click to design homes</title></rect>` : '/>'}`;
     }
     if (big) s += `<rect x="-1.5" y="${(H - big.to * fh - 0.5).toFixed(1)}" width="${W + 3}" height="${(big.len * fh).toFixed(1)}" fill="none" stroke="#fff" stroke-width="1.2" rx="1"/>`;
     return s + '</svg>';
@@ -218,7 +219,7 @@
       <div class="acts"><button id="orbit">${ic('orbit')}Drone orbit</button><button id="street">${ic('street')}3D street level</button>
         <button id="sview" class="sv">${ic('pano')}Street View</button>${(b.models || []).length ? `<button id="tour" class="sv" title="CoStar's Matterport scans of this building">${ic('tour')}3D tour inside (${b.models.length})</button>` : ''}${b.real.market && b.address ? `<button id="aerial" class="sv" title="Google Aerial View: a cinematic flyover of this building">${ic('aerial')}Aerial flyover</button>` : ''}</div>
       <h4>Test and correct</h4>
-      <div class="btns" style="margin-top:0"><button id="showPlate">${ic('plate')}Floor plate</button><button id="fix">${ic('edit')}Correct data</button></div>
+      <div class="acts"><button id="showPlate">${ic('plate')}Floor plate</button>${LW.designer ? `<button id="designHomes" title="Concept plans for any home on the floor">${ic('home')}Design homes</button>` : ''}<button id="fix">${ic('edit')}Correct data</button></div>
       <div id="fixForm" style="display:none">
         <label class="row">Leased (%) <input id="fRep" type="number" min="0" max="100" placeholder="unknown" value="${rep == null ? '' : Math.round(rep * 100)}"></label>
         <label class="row">Year built <input id="fYear" type="number" min="1900" max="2026" placeholder="unknown" value="${year ?? ''}"></label>
@@ -232,6 +233,9 @@
     if ($('aerial')) warmAerial();
     $('card').querySelectorAll('[data-ev]').forEach(el => el.onclick = () => LW.evidence(b, el.dataset.ev));
     $('showPlate').onclick = () => openPlate(b); $('approve').onclick = () => openMemo(b);
+    if ($('designHomes')) $('designHomes').onclick = () => LW.designer.start(b);
+    // floor stack: click a floor to design homes on it
+    $('card').querySelectorAll('svg [data-f]').forEach(el => el.onclick = () => { LW.pickedFloor = { idx: b.idx, f: +el.dataset.f }; openPlate(b); toast(`Floor ${el.dataset.f}: click a home to design it`); });
     $('orbit').onclick = () => { $('plateBox').style.display = 'none'; LW.view.orbit(b); };
     $('sview').onclick = () => LW.streetView.open(b);
     if ($('tour')) $('tour').onclick = () => LW.tour(b);
@@ -441,6 +445,7 @@
     $('plateStats').innerHTML = `<b>${pct(p.daylitFrac)}</b> daylit · <b>${p.perFloor}</b> homes per floor · <b>${fmt(p.homes)}</b> homes · <b>${money(p.cpu)}</b> per home · fire screen (preliminary) <b class="st-${s.status}">${LW.SAFE_LABEL[s.status].toLowerCase()}</b>` +
       (p.day ? ` · <b>${fmt(p.day.dim)}</b> homes face a neighbour` : '') +
       (a ? ` &nbsp;|&nbsp; ${a.lw ? 'With' : 'Without'} lightwell: ${fmt(a.homes)} homes at ${money(a.cpu)}` : '');
+    if (LW.designer) LW.designer.afterPlate(b, g, { ox, oy, sc });   // home designer: click a home to design it (designer.js)
   }
   LW.openPlate = openPlate;
   $('cut').onclick = () => { const b = LW.selected; if (!b) return; b.forceLW = !b.plan.lw; LW.analyze(b); LW.refresh(); openPlate(b);
@@ -726,7 +731,9 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
     const top = [['avBox', 'flex', closeAerial], ['mpBox', 'flex', () => $('mpClose').onclick()], ['modal', 'flex', () => $('mClose').onclick()],
       ['evidence', 'block', () => $('evClose').onclick()]].find(([id, shown]) => $(id).style.display === shown);
     if (top) { top[2](); e.stopPropagation(); }   // and nothing underneath closes with it
-    else if ($('svBox').style.display !== 'flex' && $('plateBox').style.display === 'block') $('closePlate').onclick();
+    else if ($('svBox').style.display === 'flex') return;   // streetview.js closes its own box
+    else if ($('designBox') && $('designBox').style.display === 'block') $('dgClose').click();
+    else if ($('plateBox').style.display === 'block') $('closePlate').onclick();
   }, true);
   document.querySelectorAll('#examples button').forEach(x => x.onclick = () => { $('prompt').value = x.dataset.q; $('prompt').focus(); });
 

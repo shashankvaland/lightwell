@@ -94,6 +94,23 @@
   <div id="plateStats"></div>
 </div>
 
+<div id="designBox" role="dialog" aria-labelledby="dgTitle">
+  <header><div><b id="dgTitle">Design a home</b><small id="dgSub"></small></div>
+    <div style="display:flex;gap:6px"><button id="dgBack">Back to floor</button><button id="dgClose">Close</button></div></header>
+  <div class="dgCtl">
+    <label>Floor <select id="dgFloor" aria-label="Floor"></select></label>
+    <label>Bedrooms <select id="dgBeds"><option value="">Any</option><option value="0">Studio</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
+    <label>Baths <select id="dgBaths"><option value="">Any</option><option value="1">1</option><option value="2">2</option></select></label>
+    <label class="chk"><input type="checkbox" id="dgWfh"> Work nook</label>
+    <label class="chk"><input type="checkbox" id="dgAcc"> Accessible bath</label>
+  </div>
+  <div class="ask"><input id="dgAsk" placeholder="Or describe it: &quot;family home with two bathrooms and a work nook&quot;"><button id="dgAskGo">Apply</button></div>
+  <div id="dgBody"></div>
+  <div class="note dgFoot">Early concept plans for screening, not construction drawings. Rooms follow typical code minimums and are
+    checked automatically (every bedroom on a window, every room reachable, a bath off the hall); walls, columns, windows and
+    pipe locations are not surveyed. An architect makes the final call.</div>
+</div>
+
 <div id="svBox" role="dialog" aria-labelledby="svTitle">
   <header><div><b id="svTitle">Street View</b><small id="svDist"></small></div>
     <div style="display:flex;gap:6px"><button id="svFace">Face the tower</button><button id="svClose">Close</button></div></header>
@@ -167,11 +184,13 @@
 <script src="data/daylight.js" onerror="this.remove()"></script>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="js/engine.js"></script>
+<script src="js/homes.js"></script>
 <script src="js/data.js"></script>
 <script src="js/shuffle.js"></script>
 <script src="js/scout.js"></script>
 <script src="js/views.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/designer.js"></script>
 <script src="js/agent.js"></script>
 <script src="js/ask.js"></script>
 <script src="js/streetview.js"></script>
