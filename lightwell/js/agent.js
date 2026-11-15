@@ -212,7 +212,7 @@
         year: LW.eff(b, 'year'), rep: LW.eff(b, 'rep'), obs: b.obs || [], scanned: b.scanned, core: LW.eff(b, 'core'),
         forceLW: b.forceLW, real: b.real, vacantFloors: b.vacantFloors || [], center: b.center, tenants: Array.isArray(b.tenants) ? b.tenants : null, src: Object.fromEntries(f.map(k => [k, LW.srcOf(b, k)])), day: b.day,
         sprinklers: b.sprinklers ?? null, converted: b.converted ?? null, ceil: b.ceil ?? null,
-        records: LW.scored || b.plan ? LW.recordCheck(b).map(f => ({ key: f.key, title: f.title, a: f.a.join(': '), b: f.b.join(': '), sim: f.sim })) : [] })) };
+        records: LW.recordCheck(b).map(f => ({ key: f.key, title: f.title, a: f.a.join(': '), b: f.b.join(': '), sim: f.sim })) })) };
   }
   async function runBackend() {
     const url = backendUrl();
