@@ -1,1 +1,1 @@
-costar_id,scanned,plate_w_ft,plate_d_ft,floor_to_floor_ft,core_x_ft,core_y_ft,core_w_ft,core_d_ft,matterport_model_id
+costar_id,scanned,plate_w_ft,plate_d_ft,floor_to_floor_ft,core_x_ft,core_y_ft,core_w_ft,core_d_ft,matterport_model_id,notes,ceiling_ft,ceiling_min_ft,ceiling_max_ft,scan_area_sqft,scan_extent_ft,scan_name,scans_measured

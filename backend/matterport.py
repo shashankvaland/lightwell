@@ -1,4 +1,4 @@
-"""Measure floor plates from CoStar's Matterport scans with the Matterport Model API; write real-data/interiors.csv.
+"""Measure CoStar's Matterport scans with the Matterport Model API; write real-data/interiors.csv.
 
     python backend/matterport.py --dry-run          # print what each scan measures; writes nothing
     python backend/matterport.py                    # write real-data/interiors.csv
@@ -9,10 +9,15 @@ Discord card "Matterport GraphQL + SDK" (Matterport calls them the API Token ID 
 HTTP Basic auth to https://api.matterport.com/api/models/graph, or MATTERPORT_API_URL if set). The model ids come
 from real-data/costar.csv, written by backend/costar_kit.py.
 
-Many CoStar scans show one suite or the lobby, not a whole floor. A scan counts as a measured floor plate only when
-one of its floors covers at least 80% of the typical floor CoStar records; then the plate width and depth come from
-that floor (tagged MATTERPORT in the app). Other scans are listed with what they cover, and the plate stays the
-OpenStreetMap footprint. Ceiling heights from a scan are not slab-to-slab heights, so floor-to-floor is left empty.
+What a scan gives, and how Lightwell uses it:
+- Clear ceiling height: the area-weighted middle of the room heights (or volume / floor area). Only scans of office
+  space count (a suite, a floor, a coworking space); lobbies, tunnels, gyms and unnamed spaces are listed, not used.
+  The building's value is the middle office ceiling by scanned area, and only when at least 2,000 sq ft of office
+  space was scanned (one small room is not enough). The engine's height test uses it (tagged MATTERPORT) while
+  floor-to-floor is only an estimate. A ceiling height is not a slab-to-slab height, so floor_to_floor_ft stays
+  empty: the slab is at least `slabFt` above the ceiling, never less.
+- Floor area and extent of the scan: shown as evidence next to CoStar's typical floor and the map footprint. The
+  API gives no plate width and depth for these scans, so the plate stays the OpenStreetMap footprint.
 """
 from __future__ import annotations
 
@@ -20,7 +25,9 @@ import argparse
 import base64
 import csv
 import json
+import math
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -31,15 +38,25 @@ import env  # noqa: F401  (loads MATTERPORT_API_KEY / MATTERPORT_API_TOKEN from 
 ROOT = Path(__file__).resolve().parent.parent
 ENDPOINT = os.environ.get("MATTERPORT_API_URL", "https://api.matterport.com/api/models/graph")
 FULL_FLOOR = 0.8
-# From Matterport's Model API samples ("Get all Dimensional Data from the Model, Floors and Rooms").
+M_TO_FT = 3.28084
+# After Matterport's Model API sample "Get all Dimensional Data from the Model, Floors and Rooms", plus scan positions.
 QUERY = """query getDimensions($modelId: ID!) {
   model(id: $modelId) {
     name
-    floors { label dimensions(units: imperial) { areaFloor width depth height units } }
+    dimensions(units: imperial) { areaFloor volume }
+    floors { label dimensions(units: imperial) { areaFloor width depth height } }
+    rooms { dimensions(units: imperial) { areaFloor height } }
+    panoLocations { position { x y z } }
   }
 }"""
 COLUMNS = ["costar_id", "scanned", "plate_w_ft", "plate_d_ft", "floor_to_floor_ft", "core_x_ft", "core_y_ft", "core_w_ft",
-           "core_d_ft", "matterport_model_id", "notes"]
+           "core_d_ft", "matterport_model_id", "notes", "ceiling_ft", "ceiling_min_ft", "ceiling_max_ft", "scan_area_sqft", "scan_extent_ft",
+           "scan_name", "scans_measured"]
+# A scan is office space only when its name says so; amenity and unnamed scans never set a ceiling height.
+AMENITY = re.compile(r"lobby|tunnel|fitness|gym|concourse|mezzanine|skywalk|lounge|conference|training|cafe|garage|parking|roof|terrace|entrance|amenit", re.I)
+OFFICE = re.compile(r"suite|\bste\b|floor|level|office|co-?working|industrious|servcorp|regus|wework|\b\d{3,4}\b", re.I)
+CEIL_RANGE = (7.0, 16.0)   # plausible clear ceiling of an office floor, ft
+MIN_OFFICE_SQFT = 2000     # office space that must be scanned before a ceiling height counts
 
 
 class MatterportError(Exception):
@@ -71,22 +88,54 @@ def fetch(model_id: str, key: str, token: str) -> dict:
     return (out.get("data") or {}).get("model") or {}
 
 
-def best_floor(model: dict):
-    """The scan's largest floor: (label, width ft, depth ft, area sq ft, height ft)."""
+def weighted_median(pairs):
+    """Middle value of (value, weight) pairs by weight."""
+    pairs = sorted((v, w) for v, w in pairs if v is not None and w and w > 0)
+    half, run = sum(w for _, w in pairs) / 2, 0.0
+    for v, w in pairs:
+        run += w
+        if run >= half:
+            return v
+    return None
+
+
+def extent_ft(model: dict):
+    """Smallest rectangle around the scan positions (ft), or None: how far the scan reaches, not the wall-to-wall plate."""
+    pts = [(p["position"]["x"] * M_TO_FT, p["position"]["y"] * M_TO_FT) for p in model.get("panoLocations") or []
+           if (p.get("position") or {}).get("x") is not None]
+    if len(pts) < 8:
+        return None
     best = None
-    for f in model.get("floors") or []:
-        d = f.get("dimensions") or {}
-        area = d.get("areaFloor") or ((d.get("width") or 0) * (d.get("depth") or 0))
-        if area and (best is None or area > best[3]):
-            best = (f.get("label") or "?", d.get("width"), d.get("depth"), area, d.get("height"))
-    return best
+    for deg in range(0, 90):
+        c, s_ = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+        us, vs = [x * c + y * s_ for x, y in pts], [-x * s_ + y * c for x, y in pts]
+        w, d = max(us) - min(us), max(vs) - min(vs)
+        if best is None or w * d < best[0] * best[1]:
+            best = (w, d)
+    return (round(max(best)), round(min(best)))
+
+
+def measure(model: dict) -> dict:
+    """One scan: name, kind (office / amenity / unclear), floor area (sq ft), clear ceiling (ft), extent (ft)."""
+    name = (model.get("name") or "").strip()
+    dims = model.get("dimensions") or {}
+    area = dims.get("areaFloor") or sum(((f.get("dimensions") or {}).get("areaFloor") or 0) for f in model.get("floors") or [])
+    rooms = [(r.get("dimensions") or {}) for r in model.get("rooms") or []]
+    rated = [(d.get("height"), d.get("areaFloor")) for d in rooms if d.get("height") and (d.get("areaFloor") or 0) >= 40]
+    ceil = weighted_median(rated) if sum(w for _, w in rated) >= 0.5 * (area or 1) else None
+    if ceil is None and area and dims.get("volume"):
+        ceil = dims["volume"] / area
+    if ceil is not None and not CEIL_RANGE[0] <= ceil <= CEIL_RANGE[1]:
+        ceil = None
+    kind = "amenity" if AMENITY.search(name) else "office" if OFFICE.search(name) else "unclear"
+    return {"name": name, "kind": kind, "area": area or 0, "ceil": round(ceil, 1) if ceil else None, "extent": extent_ft(model)}
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--costar", type=Path, default=ROOT / "real-data" / "costar.csv")
     ap.add_argument("--out", type=Path, default=ROOT / "real-data" / "interiors.csv")
-    ap.add_argument("--max-models", type=int, default=4, help="scans to read per building (each one is an API call)")
+    ap.add_argument("--max-models", type=int, default=12, help="scans to read per building (each one is an API call)")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     key, token = os.environ.get("MATTERPORT_API_KEY"), os.environ.get("MATTERPORT_API_TOKEN")
@@ -101,34 +150,44 @@ def main():
     for r in rows:
         typical = float(r.get("typical_floor_sqft") or 0)
         name = r.get("building_name") or r.get("address")
-        best = None   # (area, model id, floor tuple)
+        scans = []
         for mid in r["matterport_models"].split(";")[:a.max_models]:
             try:
-                m = fetch(mid, key, token)
+                m = measure(fetch(mid, key, token))
             except MatterportError as e:
                 failures += 1
                 print(f"  {name}: scan {mid}: {e}")
                 if "rejected" in str(e):
                     sys.exit("Stopping: fix the Matterport credentials first.")
                 continue
-            f = best_floor(m)
-            print(f"  {name}: scan {mid} '{m.get('name') or ''}': "
-                  + (f"largest floor '{f[0]}' {f[1] or 0:.0f} x {f[2] or 0:.0f} ft, {f[3]:,.0f} sq ft" + (f", ceiling ~{f[4]:.1f} ft" if f[4] else "") if f else "no floor dimensions"))
-            if f and (best is None or f[3] > best[0]):
-                best = (f[3], mid, f)
-        if not best:
+            m["id"] = mid
+            scans.append(m)
+            print(f"  {name}: scan {mid} '{m['name']}' [{m['kind']}]: {m['area']:,.0f} sq ft"
+                  + (f", ceiling {m['ceil']} ft" if m["ceil"] else ", no ceiling height")
+                  + (f", extent {m['extent'][0]} x {m['extent'][1]} ft" if m["extent"] else ""))
+        used = [m for m in scans if m["kind"] == "office" and m["ceil"]]
+        if not used:
+            print(f"  -> {name}: no office-space scan with a ceiling height; nothing measured")
             continue
-        area, mid, f = best
-        full = typical and area >= FULL_FLOOR * typical and f[1] and f[2]
-        cover = f"{area:,.0f} of the {typical:,.0f} sq ft typical floor" if typical else f"{area:,.0f} sq ft"
-        if full:
-            out.append({"costar_id": r["costar_id"], "scanned": "true", "plate_w_ft": round(max(f[1], f[2])), "plate_d_ft": round(min(f[1], f[2])),
-                        "floor_to_floor_ft": "", "core_x_ft": "", "core_y_ft": "", "core_w_ft": "", "core_d_ft": "",
-                        "matterport_model_id": mid, "notes": f"Matterport scan {mid}, floor '{f[0]}': covers {cover}"})
-            print(f"  -> {name}: measured plate {round(max(f[1], f[2]))} x {round(min(f[1], f[2]))} ft (scan covers {cover})")
-        else:
-            print(f"  -> {name}: no full-floor scan (best covers {cover}); the plate stays the map footprint")
-    print(f"{len(out)} buildings with a measured floor plate; {failures} scans could not be read.")
+        seen = sum(m["area"] for m in used)
+        if seen < MIN_OFFICE_SQFT:
+            print(f"  -> {name}: only {seen:,.0f} sq ft of office space scanned (needs {MIN_OFFICE_SQFT:,}); nothing measured")
+            continue
+        big = max(used, key=lambda m: m["area"])
+        lo, hi = min(m["ceil"] for m in used), max(m["ceil"] for m in used)
+        mid_c = weighted_median([(m["ceil"], m["area"]) for m in used])
+        full = bool(typical and big["area"] >= FULL_FLOOR * typical)
+        cover = f"{big['area']:,.0f} of the {typical:,.0f} sq ft typical floor" if typical else f"{big['area']:,.0f} sq ft"
+        out.append({"costar_id": r["costar_id"], "scanned": "true", "plate_w_ft": "", "plate_d_ft": "", "floor_to_floor_ft": "",
+                    "core_x_ft": "", "core_y_ft": "", "core_w_ft": "", "core_d_ft": "", "matterport_model_id": big["id"],
+                    "notes": f"{len(used)} office scan{'s' if len(used) != 1 else ''}, {seen:,.0f} sq ft in all. Largest: '{big['name']}', {cover}"
+                             + (" (a whole floor)" if full else " (part of a floor)"),
+                    "ceiling_ft": mid_c, "ceiling_min_ft": lo, "ceiling_max_ft": hi, "scan_area_sqft": round(big["area"]),
+                    "scan_extent_ft": f"{big['extent'][0]}x{big['extent'][1]}" if big["extent"] else "",
+                    "scan_name": big["name"], "scans_measured": len(used)})
+        print(f"  -> {name}: clear ceiling {mid_c} ft" + (f" (range {lo} to {hi} ft)" if hi != lo else "") + f" from {len(used)} office scan{'s' if len(used) != 1 else ''}; "
+              f"largest covers {cover}")
+    print(f"{len(out)} buildings with a measured ceiling height; {failures} scans could not be read.")
     if a.dry_run or not out:
         return
     a.out.parent.mkdir(parents=True, exist_ok=True)

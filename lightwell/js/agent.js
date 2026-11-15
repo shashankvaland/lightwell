@@ -118,7 +118,10 @@
         + `${ref ? ', pulled toward the downtown average' : ''}: ${med} medium, ${est.length - med} low confidence. Tagged ESTIMATE; they still don't count as real data.`); await sleep(600);
     }
     LW.log('Vexcel', `Parking counts from aerial captures: ${sim('aerial')}.${S.useParking ? '' : ' The brief ignores parking.'}`); await sleep(500);
-    LW.log('Matterport', n('interior') ? `Floor plates from ${n('interior')} real scans; the rest use their real footprint and an assumed core.`
+    const scans = B.filter(b => LW.ceilOf(b) != null);
+    LW.log('Matterport', scans.length ? `Measured clear ceilings in the scans of ${scans.length} towers (${scans.slice(0, 3).map(b => `${LW.esc(b.label)} ${b.ceil} ft`).join(', ')}${scans.length > 3 ? ', …' : ''}). `
+        + 'They decide the height test there; plates stay the map footprint, cores assumed.'
+      : n('interior') ? `Floor plates from ${n('interior')} real scans; the rest use their real footprint and an assumed core.`
       : 'No scans loaded: plates from real footprints, cores assumed.'); await sleep(500);
     await reveal();
     const costOK = B.filter(b => b.plan.cpu <= S.cap && b.plan.homes >= S.minHomes);
@@ -141,6 +144,7 @@
     LW.flagsShown = true; LW.refresh();
     const fl = B.filter(b => b.phantom), flReal = fl.filter(b => b.real.market && b.real.aerial).length;
     LW.log('Forensics', S.useParking ? `${fl.length} occupancy discrepancies to investigate (red dots), ${flReal ? flReal + ' on real data' : 'all on simulated data'}.` : 'Parking ignored by the brief: no occupancy comparison.'); await sleep(700);
+    LW.log('Forensics', LW.recordSummary(B)); await sleep(700);
     const review = [];
     let top = passing().slice(0, 3);
     if (top.length) {
@@ -148,6 +152,8 @@
       const msg = rel.length ? `${rel[0].id}'s ${rel[0].label} is ${rel[0].current}, ${rel[0].basis}. At ${rel[0].what_if}, ${rel[0].id} ${rel[0].decision}.`
         : 'No missing value would change the shortlist; remaining estimates are noted in the memo.';
       review.push(msg); LW.log('Review', msg); await sleep(500);
+      const done = gaps.find(x => x.field === 'f2f' && x.scan_ceil != null && !x.relevant);
+      if (done) { const m2 = LW.scanSettles(done); review.push(m2); LW.log('Matterport', m2); await sleep(500); }
       const g = rel.find(x => x.id === top[0].id);
       if (g) {
         const raw = await LW.askUser({ tower: g.id, field: g.field, label: g.label, unit: g.unit, current: g.current, source: g.source,
@@ -205,7 +211,8 @@
       buildings: LW.B.map(b => ({ id: b.id, W: b.W, D: b.D, heightM: b.heightM, floors: LW.eff(b, 'floors'), f2f: LW.eff(b, 'f2f'),
         year: LW.eff(b, 'year'), rep: LW.eff(b, 'rep'), obs: b.obs || [], scanned: b.scanned, core: LW.eff(b, 'core'),
         forceLW: b.forceLW, real: b.real, vacantFloors: b.vacantFloors || [], center: b.center, tenants: Array.isArray(b.tenants) ? b.tenants : null, src: Object.fromEntries(f.map(k => [k, LW.srcOf(b, k)])), day: b.day,
-        sprinklers: b.sprinklers ?? null, converted: b.converted ?? null })) };
+        sprinklers: b.sprinklers ?? null, converted: b.converted ?? null, ceil: b.ceil ?? null,
+        records: LW.scored || b.plan ? LW.recordCheck(b).map(f => ({ key: f.key, title: f.title, a: f.a.join(': '), b: f.b.join(': '), sim: f.sim })) : [] })) };
   }
   async function runBackend() {
     const url = backendUrl();
@@ -257,8 +264,10 @@
   agent.run = async function () {
     if (agent.running || !LW.B) return; agent.running = true; $('run').disabled = true;
     const { S, got } = LW.parseBrief($('prompt').value, LW.S); LW.setBrief(S);
+    const mem = LW.memory && LW.memory.line();
     reset();
     LW.log('Planner', got.length ? `Read your request as: ${got.join('; ')}.` : 'No constraints found in the request; using the brief panel as set.');
+    if (mem) LW.log('Planner', mem);
     let best = null;
     try {
       if (agent.backend) best = await runBackend();

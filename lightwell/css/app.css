@@ -302,6 +302,10 @@ table.kv td:first-child{color:var(--muted);width:42%}table.kv.grid td:first-chil
   .maplibregl-ctrl-bottom-right{right:0;bottom:46vh}#g3d .cesium-viewer-bottom{left:8px!important;bottom:46vh!important}
   #modal,#mpBox,#avBox{padding:8px}}
 @media (max-width:760px){#intro .istats,#intro .icols{grid-template-columns:1fr}#intro h2{font-size:20px}#intro .ibox{padding:20px 16px}}
+/* what Lightwell remembers between visits */
+#memNote{display:none;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;font-size:11px;color:var(--muted)}
+#memNote button{flex:none;padding:2px 9px;font-size:11px}
+
 /* Ask Lightwell (chat) */
 #chat{display:flex;flex-direction:column;gap:6px;max-height:340px;overflow-y:auto;margin-bottom:8px}
 #chat:empty{display:none}

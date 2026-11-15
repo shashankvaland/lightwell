@@ -161,6 +161,9 @@ def main():
         buildings[str(oid)]["interior"] = {k: v for k, v in {
             "scanned": r.get("scanned", "").lower() in ("true", "1", "yes"), "W": num(r.get("plate_w_ft")), "D": num(r.get("plate_d_ft")),
             "f2f": num(r.get("floor_to_floor_ft")), "model_id": r.get("matterport_model_id") or None, "notes": r.get("notes") or None,
+            "ceil": num(r.get("ceiling_ft")), "ceil_min": num(r.get("ceiling_min_ft")), "ceil_max": num(r.get("ceiling_max_ft")),
+            "scan_area": num(r.get("scan_area_sqft"), int), "scan_extent": r.get("scan_extent_ft") or None,
+            "scan_name": r.get("scan_name") or None, "scans": num(r.get("scans_measured"), int),
             "core": None if None in core else [core[0], core[1], core[0] + core[2], core[1] + core[3]],
         }.items() if v is not None}
 

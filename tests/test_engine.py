@@ -102,6 +102,28 @@ def test_js_python_parity():
 
 
 @pytest.mark.skipif(not JS.exists(), reason="run `node tests/parity.mjs` first")
+def test_review_gaps_parity_and_measured_ceilings():
+    from engine import ceil_of, f2f_floor, review_gaps
+    data = json.loads(JS.read_text())
+    scanned = settled = 0
+    for sc in data:
+        bs = {row["input"]["id"]: analyze(Building(**row["input"]), sc["S"], sc["A"]) for row in sc["rows"]}
+        assert review_gaps(bs, sc["review"]["ids"], sc["S"], sc["A"]) == sc["review"]["gaps"]
+        for b in bs.values():
+            c = ceil_of(b)
+            if c is None:
+                assert f2f_floor(b, sc["A"]) == 10
+                continue
+            scanned += 1
+            assert f2f_floor(b, sc["A"]) >= c + sc["A"]["slabFt"] - 0.05      # never below what the scan allows
+            low = c < sc["A"]["ceilHard"]
+            assert any("ceilings under" in w for w in b.why) == low          # the measured ceiling decides the height test
+            assert not any("floor-to-floor under" in w for w in b.why)
+        settled += sum(1 for g in sc["review"]["gaps"] if g["scan_ceil"] is not None and not g["relevant"])
+    assert scanned > 10 and settled > 0
+
+
+@pytest.mark.skipif(not JS.exists(), reason="run `node tests/parity.mjs` first")
 def test_fast_track_and_moves_parity():
     from shuffle import challenge_plan, fast_track, plan_moves
     data = json.loads(JS.read_text())

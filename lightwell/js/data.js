@@ -137,6 +137,7 @@
       b.ev.matterport = I; b.scanned = !!I.scanned; b.modelId = I.model_id || null; b.real.interior = true;
       if (I.W && I.D) { b.W = Math.max(I.W, I.D); b.D = Math.min(I.W, I.D); b.irregular = false; b.src.plate = 'MATTERPORT'; }
       if (I.f2f) { b.f2f = I.f2f; b.src.f2f = 'MATTERPORT'; }
+      if (I.ceil) { b.ceil = I.ceil; b.src.ceil = 'MATTERPORT'; }   // clear ceiling measured in scans of office space: decides the height test
       if (I.core && I.W >= I.D) { b.core = I.core; b.src.core = 'MATTERPORT'; }   // core given in the plate's own orientation
     }
   }

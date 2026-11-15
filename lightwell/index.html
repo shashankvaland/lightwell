@@ -48,6 +48,7 @@
   <h2>Brief (live)</h2>
   <div class="hint">The rules for this search. Change one and every tower re-scores.</div>
   <div class="note brief" id="briefText"></div>
+  <div id="memNote" role="status"></div>
   <label class="row" for="dist">Max distance to a window <b id="dL"></b></label>
   <input id="dist" type="range" min="25" max="40" value="30">
   <label class="row" for="cap">Cost cap per home <b id="cL"></b></label>
@@ -188,11 +189,13 @@
 <script src="js/data.js"></script>
 <script src="js/shuffle.js"></script>
 <script src="js/scout.js"></script>
+<script src="js/records.js"></script>
 <script src="js/views.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/designer.js"></script>
 <script src="js/agent.js"></script>
 <script src="js/ask.js"></script>
+<script src="js/memory.js"></script>
 <script src="js/streetview.js"></script>
 <script src="js/intro.js"></script>
 <script>LW.start().then(() => LW.intro.maybe());</script>

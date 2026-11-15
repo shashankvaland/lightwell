@@ -17,6 +17,9 @@
     reuseSaving: 0.6,        // share of that carbon avoided by reuse
     f2fMin: 12.5,            // comfortable floor-to-floor height (ft) for homes (below it the score drops)
     f2fHard: 10.5,           // below this floor-to-floor height (ft) homes don't fit ducts and ceilings: fails
+    ceilGood: 8.5,           // an office ceiling (ft) measured in a scan at or above this is comfortable for homes (removing it only adds height)
+    ceilHard: 7.5,           // below this measured clear ceiling (ft) homes don't fit: fails
+    slabFt: 1.5,             // least structure + services between a finished ceiling and the floor above (ft)
     maxTravelFt: 250,        // typical max exit-access travel to a stair (sprinklered residential)
     unknownVacancy: 0.25,    // used only when neither leasing nor parking evidence exists (Houston average, 2026)
     unknownYear: 1970,       // used only when year built is missing: conservative (abatement + sprinkler retrofit)
@@ -234,6 +237,8 @@
     else if (b.forceLW == null && S.allowLW && p1 && p1.cpu < p0.cpu) p = p1;
     b.alt = p === p0 ? p1 : p0; b.plan = p; b.courtOK = ok;
     const rep = LW.eff(b, 'rep'), year = LW.eff(b, 'year'), f2f = LW.eff(b, 'f2f');
+    // height test: a clear ceiling measured in a Matterport scan decides it; otherwise the floor-to-floor height does
+    const ceil = LW.ceilOf(b), tall = ceil != null ? ceil >= A.ceilGood : f2f >= A.f2fMin, low = ceil != null ? ceil < A.ceilHard : f2f < A.f2fHard;
     const obs = S.useParking === false ? [] : (b.obs || []);
     const assumed = [];
     let vac, vacBasis;
@@ -247,13 +252,13 @@
     const ageFit = year == null ? .6 : year < 1960 ? .6 : year <= 1995 ? 1 : year <= 2008 ? .6 : .25;
     const safeScore = { verify: 1, check: .5, fail: 0 }[p.safety.status];
     b.vac = vac; b.vacBasis = vacBasis; b.assumed = assumed;
-    b.score = Math.round(100 * (0.30 * p.daylitFrac + 0.26 * vac + 0.20 * costScore + 0.06 * (f2f >= A.f2fMin ? 1 : .4)
+    b.score = Math.round(100 * (0.30 * p.daylitFrac + 0.26 * vac + 0.20 * costScore + 0.06 * (tall ? 1 : .4)
       + 0.08 * ageFit + 0.10 * safeScore));
     const why = [];
     if (!(p.cpu <= S.cap)) why.push('over cost cap');
     if (p.homes < S.minHomes) why.push(`under ${S.minHomes} homes`);
     if (p.safety.status === 'fail') why.push('likely fire-safety blocker');
-    if (f2f < A.f2fHard) why.push(`floor-to-floor under ${A.f2fHard} ft`);
+    if (low) why.push(ceil != null ? `ceilings under ${A.ceilHard} ft (measured ${ceil} ft)` : `floor-to-floor under ${A.f2fHard} ft`);
     const missing = (S.require || []).filter(k => !(b.real && b.real[k]));
     if (missing.length) why.push('missing real ' + missing.map(k => ({ market: 'CoStar', aerial: 'Vexcel', interior: 'Matterport' })[k] || k).join(' + ') + ' data');
     if (b.converted) why.push(`already converted (${b.converted})`);   // CoStar records the building as converted to another use
@@ -282,6 +287,13 @@
     core: { label: 'core size', unit: 'ft', srcs: ['ASSUMED', 'MISSING'], why: 'assumed (typical central core), not measured', test: 'a core 40% larger', ph: 'e.g. 60x45' },
     rep: { label: 'percent leased', unit: '%', srcs: ['SIMULATED', 'MISSING'], why: 'not from a CoStar record', test: '90% leased', ph: 'e.g. 85' },
   };
+  // A clear ceiling measured in a Matterport scan (b.ceil, ft): direct evidence, so it decides the height test when present.
+  LW.ceilOf = b => (b.ceil != null ? b.ceil : null);
+  // A floor-to-floor record lower than the scanned ceiling allows cannot be right for the scanned floor.
+  LW.f2fConflict = b => LW.ceilOf(b) != null && LW.eff(b, 'f2f') < LW.scanF2f(b);
+  // The lowest floor-to-floor worth testing: 10 ft, or the measured ceiling plus the least structure above it.
+  LW.scanF2f = b => round1(b.ceil + LW.A.slabFt);   // the lowest floor-to-floor a scanned ceiling allows
+  LW.f2fFloor = b => (LW.ceilOf(b) == null ? 10 : Math.max(10, LW.scanF2f(b)));
   LW.defaultCore = (W, D) => { const cw = Math.min(Math.max(40, Math.round(W * 0.26 / 10) * 10), W), cd = Math.min(Math.max(30, Math.round(D * 0.2 / 10) * 10), D);
     return [(W - cw) / 2, (D - cd) / 2, (W + cw) / 2, (D + cd) / 2]; };
   LW.centredCore = (W, D, cw, cd) => { cw = Math.min(cw, W); cd = Math.min(cd, D); return [(W - cw) / 2, (D - cd) / 2, (W + cw) / 2, (D + cd) / 2]; };
@@ -291,22 +303,26 @@
     const r = LW.eff(b, 'rep'); return r == null ? 'unknown' : Math.round(r * 100) + '%'; };
   function whatIf(b, f) {
     const o = { ...b.overrides };
-    if (f === 'f2f') o.f2f = Math.min(LW.eff(b, 'f2f'), 10);
+    if (f === 'f2f') o.f2f = Math.min(LW.eff(b, 'f2f'), LW.f2fFloor(b));
     else if (f === 'core') { const c = effCore(b); o.core = LW.centredCore(b.W, b.D, (c[2] - c[0]) * 1.4, (c[3] - c[1]) * 1.4); }
     else o.rep = 0.9;
     return LW.analyze({ ...b, overrides: o });
   }
+  // What the agent says when a scanned ceiling settles the floor-to-floor question (same words as engine.py).
+  LW.scanSettles = g => `${g.id}: the Matterport scan measured ${g.scan_ceil} ft clear ceilings, so floor-to-floor is at least ${g.what_if.split(' ft')[0]} ft and homes fit. `
+    + 'The height question is settled without a site visit.';
   LW.reviewGaps = function (B, ids) {
     const ranked = B.filter(b => b.pass).sort((a, c) => c.score - a.score), leader = ranked[0], runner = ranked[1], out = [];
     for (const id of ids) {
       const b = B.find(x => x.id === id); if (!b) continue;
       for (const [f, spec] of Object.entries(LW.WHATIF)) {
         const src = LW.srcOf ? LW.srcOf(b, f) : 'MISSING'; if (!spec.srcs.includes(src)) continue;
-        const t = whatIf(b, f); let decision = '';
+        const t = whatIf(b, f), sc = f === 'f2f' ? LW.ceilOf(b) : null; let decision = '';
         if (b.pass && !t.pass) decision = `would no longer pass (${t.why.join(', ')})`;
         else if (leader === b && runner && t.score < runner.score) decision = `would drop below ${runner.id} (${t.score} vs ${runner.score})`;
-        out.push({ id, field: f, label: spec.label, unit: spec.unit, current: LW.currentValue(b, f), source: src, basis: spec.why, what_if: spec.test,
-          score_now: b.score, score_if: t.score, passes_if: t.pass, decision, relevant: !!decision });
+        out.push({ id, field: f, label: spec.label, unit: spec.unit, current: LW.currentValue(b, f), source: src, basis: spec.why,
+          what_if: sc != null ? `${LW.f2fFloor(b)} ft, the lowest the Matterport scan allows (${sc} ft clear ceiling measured)` : spec.test,
+          score_now: b.score, score_if: t.score, passes_if: t.pass, decision, relevant: !!decision, scan_ceil: sc });
       }
     }
     return out.sort((a, c) => (a.relevant === c.relevant ? 0 : a.relevant ? -1 : 1) || ids.indexOf(a.id) - ids.indexOf(c.id) || (c.score_now - c.score_if) - (a.score_now - a.score_if));

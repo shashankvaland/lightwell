@@ -7,7 +7,7 @@ team). Any file can be missing; that layer stays simulated in demo mode and MISS
 real-data/costar.csv      one row per building
 real-data/tenants.csv     one row per current tenancy (tenant moves)
 real-data/parking.csv     one row per building per aerial capture
-real-data/interiors.csv   one row per building with a measured floor plate
+real-data/interiors.csv   one row per building with a Matterport measurement (ceiling height, scan area)
 ```
 After changing any of them, from the project folder:
 ```
@@ -53,8 +53,11 @@ To measure floor plates from the scans, put the Matterport keys in `.env` (see t
 python backend/matterport.py --dry-run     # what each scan covers; writes nothing
 python backend/matterport.py               # -> real-data/interiors.csv, then run import_data.py
 ```
-Only a scan that covers 80%+ of the typical floor becomes a measured plate (MATTERPORT); many scans show one suite or
-the lobby, and those are listed, not used.
+What a scan gives: the **clear ceiling height** of scanned office space, its floor area and how far the scan reaches.
+The engine's height test uses the ceiling (tagged MATTERPORT) instead of the floor-to-floor estimate, and the agent no
+longer asks you to measure a height the scan already settles. Lobbies, tunnels, gyms and unnamed scans are listed, not
+used, and a building needs 2,000 sq ft of scanned office space. The API gives no plate width and depth for these scans,
+so the plate stays the OpenStreetMap footprint; the scan area is shown next to CoStar's typical floor as a cross-check.
 
 ## Vexcel aerial counts (parking)
 
@@ -122,8 +125,12 @@ python backend/count_cars.py lot.jpg --costar-id 1234567 --date 2026-11-14 --dry
 | plate_w_ft, plate_d_ft | typical floor width and depth |
 | floor_to_floor_ft | slab-to-slab height (a scan's ceiling height is not this; leave empty) |
 | core_x_ft, core_y_ft, core_w_ft, core_d_ft | core rectangle on that floor (from the plate's top-left corner); leave empty if unknown |
-| matterport_model_id | the scan the plate came from |
-| notes | optional: what the scan covers, shown in the evidence drawer |
+| matterport_model_id | the largest office scan |
+| notes | optional: what the scans cover, shown in the evidence drawer |
+| ceiling_ft | clear ceiling measured in scans of office space (the middle value by scanned area); decides the height test |
+| ceiling_min_ft, ceiling_max_ft | lowest and highest office ceiling across the scans |
+| scan_area_sqft, scan_extent_ft, scan_name | the largest office scan: floor area, how far it reaches (e.g. 200x120), its name |
+| scans_measured | office scans that gave a ceiling height |
 
 ## How matching works
 1. A row with `osm_id` (from `costar_kit.py`) uses that footprint.

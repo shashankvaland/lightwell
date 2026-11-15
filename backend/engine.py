@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 DEFAULT_ASSUMPTIONS = {
     "costPerSqft": 255, "abatement": 20, "lightwellPerSqft": 420, "sprinklerPerSqft": 9,
     "newBuildPerHome": 400000, "carbonKgPerM2": 500, "reuseSaving": 0.6, "f2fMin": 12.5, "f2fHard": 10.5, "maxTravelFt": 250,
+    "ceilGood": 8.5, "ceilHard": 7.5, "slabFt": 1.5,   # measured clear ceilings (Matterport): comfortable, too low, least structure above
     "unknownVacancy": 0.25, "unknownYear": 1970, "moveCostSqft": 15, "buyoutSqftYr": 30,
     "unknownLeaseYrs": 3,   # years of concessions assumed when a tenant's lease end is not on record (real CoStar tenants)
 }
@@ -96,6 +97,8 @@ class Building:
     day: dict | None = None           # Daylight X-ray profile from lightwell/data/daylight.json (sent by the browser)
     sprinklers: bool | None = None    # CoStar: True = sprinklered, False = none on record, None = unknown (year rule applies)
     converted: int | None = None      # CoStar: year the building was converted to another use (it then never passes)
+    ceil: float | None = None         # Matterport: clear ceiling height (ft) measured in a scan of an office floor
+    records: list | None = None       # record cross-check findings from the browser (lightwell/js/records.js): where two sources disagree
 
 
 def layout(W, D, u, lw, core=None):
@@ -337,8 +340,12 @@ def analyze(b: Building, S=None, A=None) -> Building:
     age_fit = 0.6 if y is None or y < 1960 else 1 if y <= 1995 else 0.6 if y <= 2008 else 0.25
     safe_score = {"verify": 1, "check": 0.5, "fail": 0}[p["safety"]["status"]]
     b.vac, b.vac_basis, b.assumed = vac, basis, assumed
+    # height test: a clear ceiling measured in a Matterport scan decides it; otherwise the floor-to-floor height does
+    c = ceil_of(b)
+    tall = c >= A["ceilGood"] if c is not None else b.f2f >= A["f2fMin"]
+    low = c < A["ceilHard"] if c is not None else b.f2f < A["f2fHard"]
     b.score = jround(100 * (0.30 * p["daylitFrac"] + 0.26 * vac + 0.20 * cost_score
-                            + 0.06 * (1 if b.f2f >= A["f2fMin"] else 0.4) + 0.08 * age_fit + 0.10 * safe_score))
+                            + 0.06 * (1 if tall else 0.4) + 0.08 * age_fit + 0.10 * safe_score))
     why = []
     if not p["cpu"] <= S["cap"]:
         why.append("over cost cap")
@@ -346,8 +353,8 @@ def analyze(b: Building, S=None, A=None) -> Building:
         why.append(f"under {S['minHomes']} homes")
     if p["safety"]["status"] == "fail":
         why.append("likely fire-safety blocker")
-    if b.f2f < A["f2fHard"]:
-        why.append(f"floor-to-floor under {A['f2fHard']} ft")
+    if low:
+        why.append(f"ceilings under {A['ceilHard']:g} ft (measured {c:g} ft)" if c is not None else f"floor-to-floor under {A['f2fHard']} ft")
     missing = [k for k in (S.get("require") or []) if not (b.real or {}).get(k)]
     if missing:
         why.append("missing real " + " + ".join(LAYER_NAME.get(k, k) for k in missing) + " data")
@@ -386,6 +393,23 @@ WHATIF = {
 }
 
 
+def ceil_of(b: Building):
+    """A clear ceiling measured in a Matterport scan (ft): direct evidence, so it decides the height test when present."""
+    return b.ceil
+
+
+def f2f_conflict(b: Building, A=None) -> bool:
+    """A floor-to-floor record lower than the scanned ceiling allows cannot be right for the scanned floor."""
+    c = ceil_of(b)
+    return c is not None and b.f2f < jround((c + (A or DEFAULT_ASSUMPTIONS)["slabFt"]) * 10) / 10
+
+
+def f2f_floor(b: Building, A=None):
+    """The lowest floor-to-floor worth testing: 10 ft, or the measured ceiling plus the least structure above it."""
+    c = ceil_of(b)
+    return 10.0 if c is None else max(10.0, jround((c + (A or DEFAULT_ASSUMPTIONS)["slabFt"]) * 10) / 10)
+
+
 def default_core(W, D):
     cw = min(max(40, jround(W * 0.26 / 10) * 10), W)
     cd = min(max(30, jround(D * 0.2 / 10) * 10), D)
@@ -397,10 +421,10 @@ def centred_core(W, D, cw, cd):
     return [(W - cw) / 2, (D - cd) / 2, (W + cw) / 2, (D + cd) / 2]
 
 
-def what_if(b: Building, f: str) -> Building:
+def what_if(b: Building, f: str, A=None) -> Building:
     from dataclasses import replace
     if f == "f2f":
-        return replace(b, f2f=min(b.f2f, 10.0))
+        return replace(b, f2f=min(b.f2f, f2f_floor(b, A)))
     if f == "core":
         c = b.core or default_core(b.W, b.D)
         return replace(b, core=centred_core(b.W, b.D, (c[2] - c[0]) * 1.4, (c[3] - c[1]) * 1.4))
@@ -418,6 +442,12 @@ def current_value(b: Building, f: str) -> str:
     return "unknown" if b.rep is None else f"{jround(b.rep * 100)}%"
 
 
+def scan_settles(g: dict) -> str:
+    """What the agent says when a scanned ceiling settles the floor-to-floor question (same words as engine.js)."""
+    return (f"{g['id']}: the Matterport scan measured {g['scan_ceil']:g} ft clear ceilings, so floor-to-floor is at least "
+            f"{g['what_if'].split(' ft')[0]} ft and homes fit. The height question is settled without a site visit.")
+
+
 def review_gaps(buildings: dict, ids, S=None, A=None):
     S = {**DEFAULT_CONSTRAINTS, **(S or {})}
     A = {**DEFAULT_ASSUMPTIONS, **(A or {})}
@@ -431,15 +461,19 @@ def review_gaps(buildings: dict, ids, S=None, A=None):
             src = (b.src or {}).get(f, "MISSING")
             if src not in spec["srcs"]:
                 continue
-            t = analyze(what_if(b, f), S, A)
+            t = analyze(what_if(b, f, A), S, A)
+            sc = ceil_of(b) if f == "f2f" else None
             decision = ""
             if b.passes and not t.passes:
                 decision = f"would no longer pass ({', '.join(t.why)})"
             elif leader is b and runner is not None and t.score < runner.score:
                 decision = f"would drop below {runner.id} ({t.score} vs {runner.score})"
             out.append({"id": tid, "field": f, "label": spec["label"], "unit": spec["unit"], "current": current_value(b, f),
-                        "source": src, "basis": spec["why"], "what_if": spec["test"], "score_now": b.score, "score_if": t.score,
-                        "passes_if": t.passes, "decision": decision, "relevant": bool(decision)})
+                        "source": src, "basis": spec["why"],
+                        "what_if": (f"{f2f_floor(b, A):g} ft, the lowest the Matterport scan allows ({sc:g} ft clear ceiling measured)"
+                                    if sc is not None else spec["test"]),
+                        "score_now": b.score, "score_if": t.score,
+                        "passes_if": t.passes, "decision": decision, "relevant": bool(decision), "scan_ceil": sc})
     out.sort(key=lambda g: (not g["relevant"], ids.index(g["id"]), -(g["score_now"] - g["score_if"])))
     return out
 

@@ -29,17 +29,19 @@
     loadBuildings();
     LW.view = LW.views.map; LW.views.map.show(true); LW.views.g3d.show(false);
     LW.setBrief(LW.S); buildAssumptions();
+    if (LW.memory) LW.memory.restore();   // the brief you settled on last time
     await LW.views.map.init();
     LW.agent.checkBackend();
   };
   function loadBuildings() {
     LW.B = LW.buildCandidates(LW.geo, LW.dataMode);
+    if (LW.memory) LW.memory.apply();   // corrections you made on an earlier visit
     LW.byOsm = new Map(LW.B.map(b => [b.osmId, b]));
     $('kCand').textContent = LW.B.length;
     Object.values(LW.views).forEach(v => v.setTowers());   // both views mark / rebuild their towers for the new list
     document.querySelectorAll('#dataMode button').forEach(x => { x.classList.toggle('on', x.dataset.m === LW.dataMode); x.setAttribute('aria-pressed', x.dataset.m === LW.dataMode); });
     const n = k => LW.B.filter(b => b.real[k]).length, chip = (v, t) => `<span><b>${v}</b> ${t}</span>`;
-    $('dataNote').innerHTML = (LW.real ? `<div class="dchips" title="Real data imported ${esc(LW.real.generated.replace('T', ' '))}">${chip(n('market'), 'CoStar towers')}${chip(n('aerial'), 'Vexcel counts')}${chip(n('interior'), 'Matterport plates')}${LW.real.counts && LW.real.counts.tenants ? chip(LW.real.counts.tenants, 'tenants') : ''}</div>`
+    $('dataNote').innerHTML = (LW.real ? `<div class="dchips" title="Real data imported ${esc(LW.real.generated.replace('T', ' '))}">${chip(n('market'), 'CoStar towers')}${chip(n('aerial'), 'Vexcel counts')}${chip(n('interior'), 'Matterport scans')}${LW.real.counts && LW.real.counts.tenants ? chip(LW.real.counts.tenants, 'tenants') : ''}</div>`
       : '<b>Real:</b> building footprints and heights (OpenStreetMap). No CoStar, Vexcel or Matterport data imported yet.<br>')
       + (LW.dataMode === 'demo' ? '<b>Demo fill-in:</b> towers without real records get SIMULATED values. Real names stay hidden next to simulated numbers.'
         : '<b>Real data only:</b> nothing is simulated. Missing values show as MISSING and any assumption the engine makes is stated.')
@@ -172,6 +174,7 @@
 
   function renderCard(b) {
     const p = b.plan, s = p.safety, col = LW.hex(LW.scoreRGB(b.score ?? 0)), A = LW.A, f2f = LW.eff(b, 'f2f'), rep = LW.eff(b, 'rep'), year = LW.eff(b, 'year');
+    const recs = LW.recordCheck(b);
     const layers = ['market', 'aerial', 'interior'].filter(k => b.real[k]), obs = b.obs || [];
     const parkTxt = !obs.length ? 'Parking: no aerial counts' : `Parking ${obs.map((x, i) => `${pct(x)}${b.obsDates ? ` (${esc(b.obsDates[i])})` : ''}`).join(' / ')} full${LW.S.useParking ? '' : ' · ignored by the brief'}`;
     const c = LW.eff(b, 'core') || LW.defaultCore(b.W, b.D);
@@ -196,7 +199,11 @@
       ${row(b, 'floors', `Height ${b.heightM} m · ${LW.eff(b, 'floors')} floors`)}
       ${row(b, 'plate', `Floor plate ${LW.srcOf(b, 'plate') === 'MATTERPORT' ? '' : 'about '}${b.W} × ${b.D} ft${b.irregular ? ' (irregular footprint, simplified)' : ''}`)}
       ${row(b, 'core', `Core ${Math.round(c[2] - c[0])} × ${Math.round(c[3] - c[1])} ft${LW.srcOf(b, 'core') === 'ASSUMED' ? ', assumed central' : ''}`)}
-      ${row(b, 'f2f', `${f2f} ft floor-to-floor${f2f < A.f2fHard ? ' (too low for homes)' : f2f < A.f2fMin ? ' (tight for homes)' : ''}`)}
+      ${LW.ceilOf(b) != null ? row(b, 'ceil', `Ceilings ${b.ceil} ft clear, measured in ${b.ev.matterport.scans > 1 ? b.ev.matterport.scans + ' scans' : 'a scan'} of office space`
+        + `${b.ceil < A.ceilHard ? ' (too low for homes)' : b.ceil < A.ceilGood ? ' (tight for homes)' : ': enough height for homes'}`)
+        + row(b, 'f2f', LW.f2fConflict(b) ? `<b>Record check:</b> ${f2f} ft floor-to-floor on record, but the scan's ${b.ceil} ft clear ceiling needs at least ${LW.scanF2f(b)} ft. Verify the record.`
+          : `${f2f} ft floor-to-floor${LW.srcOf(b, 'f2f') === 'ESTIMATE' ? `, at least ${LW.scanF2f(b)} ft by the scan` : ', consistent with the scan'}`)
+        : row(b, 'f2f', `${f2f} ft floor-to-floor${f2f < A.f2fHard ? ' (too low for homes)' : f2f < A.f2fMin ? ' (tight for homes)' : ''}`)}
       ${b.sprinklers === true || b.sprinklers === false ? row(b, 'sprinklers', b.sprinklers ? 'Sprinklers on record' : 'No sprinklers on record: a full retrofit is priced in') : ''}
       <h4>Market</h4>
       ${row(b, 'rep', rep == null ? 'Leased: unknown' : b.ev.scout && LW.srcOf(b, 'rep') === 'ESTIMATE'
@@ -213,6 +220,8 @@
       ${b.phantom ? `<div class="find blk"><button class="tag t-fx" data-ev="obs">INVESTIGATE</button><span>${(b.real.market && b.real.aerial)
         ? `Observation to investigate, not a finding: reported ${pct(rep)} leased, but parking never above ${pct(Math.max(...obs))} across ${obs.length} captures. Garages, transit or remote work can explain this.`
         : `Simulated example of an occupancy discrepancy: reported ${pct(rep)} leased, parking never above ${pct(Math.max(...obs))}.`}</span></div>` : ''}
+      ${recs.length ? `<div class="find blk"><button class="tag t-fx" data-ev="records">RECORD CHECK</button><span><b>${recs.length} place${recs.length > 1 ? 's' : ''} where two sources disagree.</b> `
+        + `${esc(recs[0].title)}${recs.length > 1 ? ` (+${recs.length - 1} more)` : ''}. Observations to investigate, not findings.</span></div>` : ''}
       ${b.assumed && b.assumed.length ? `<div class="note" style="margin-top:6px">${b.assumed.map(esc).join('<br>')}</div>` : ''}
       <details class="cl"><summary>Before a site visit (${checklist.length})</summary><ol>${checklist.map(x => `<li>${esc(x.text)}${x.from ? ` <small>· ${esc(x.from)}</small>` : ''}</li>`).join('')}</ol></details>
       <h4>See the building</h4>
@@ -265,18 +274,22 @@
 
   // ---------- evidence drawer ----------
   const kv = rows => `<table class="kv">${rows.filter(r => r[1] != null && r[1] !== '').map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`;
-  const FIELD = { sprinklers: 'Sprinklers', vacant: 'Empty floors', floors: 'Floors and height', plate: 'Floor plate', core: 'Core', f2f: 'Floor-to-floor height', rep: 'Percent leased', year: 'Year built', obs: 'Parking occupancy', fire: 'Preliminary fire screen', texas: 'Texas conversion fast-track', daylight: 'Daylight from neighbours', '': 'Calculated value' };
+  const FIELD = { sprinklers: 'Sprinklers', vacant: 'Empty floors', floors: 'Floors and height', plate: 'Floor plate', core: 'Core', f2f: 'Floor-to-floor height', ceil: 'Ceiling height', records: 'Record cross-check', rep: 'Percent leased', year: 'Year built', obs: 'Parking occupancy', fire: 'Preliminary fire screen', texas: 'Texas conversion fast-track', daylight: 'Daylight from neighbours', '': 'Calculated value' };
   const SRC_TXT = {
     OSM: 'From the OpenStreetMap building record (footprint, height or levels tags).',
     ESTIMATE: 'Estimated by Lightwell from other values; not measured.',
     ASSUMED: 'Assumed by Lightwell because no measurement is loaded.',
     COSTAR: 'From the CoStar data kit (property, tenancy, listing and sale records), imported with backend/costar_kit.py. Derived values say how below.', VEXCEL: 'From imported Vexcel aerial captures (car counts per capture).',
-    MATTERPORT: 'From the imported Matterport scan record.',
+    MATTERPORT: "Measured from CoStar's Matterport scans of this building with the Matterport Model API (backend/matterport.py).",
     SIMULATED: 'Demo stand-in from a seeded random generator. Not real data; never shown next to a real building name.',
     MISSING: 'No value in any loaded data layer.', YOU: 'Corrected by you in this session.',
   };
   LW.evidence = function (b, k) {
-    const s = k && k !== 'fire' && k !== 'texas' ? LW.srcOf(b, k) : null, p = b.plan, sf = p.safety, parts = [];
+    const s = k && k !== 'fire' && k !== 'texas' && k !== 'records' ? LW.srcOf(b, k) : null, p = b.plan, sf = p.safety, parts = [];
+    if (k === 'records') { const F = LW.recordCheck(b);
+      parts.push(`<p><b>Observations to investigate, not findings.</b> Lightwell compares independent records about this tower (CoStar property, tenancy and sale records, Matterport scans, the OpenStreetMap footprint and height, aerial parking counts) and lists where two of them disagree. Each line names both sources so you can check it.</p>`);
+      for (const f of F) parts.push(`<h4>${esc(f.title)}${f.sim ? ' (simulated example)' : ''}</h4>` + kv([[f.a[0], f.a[1]], [f.b[0], f.b[1]]]) + `<p>${esc(f.note)}</p>`);
+      if (!F.length) parts.push('<p>No two sources disagree on this tower.</p>'); }
     if (s) parts.push(`<p><span class="tag ${LW.SRC_CLASS[s]}">${s}</span> ${SRC_TXT[s] || ''}</p>`);
     if (s === 'YOU') parts.push(kv([['Your value', JSON.stringify(b.overrides[k])], ['Original', JSON.stringify(b[k])], ['Original source', (b.src || {})[k]]]));
     if (k === 'rep' || k === 'year') {
@@ -323,8 +336,17 @@
       else if ((b.obs || []).length) parts.push(kv(b.obs.map((x, i) => [`Capture ${i + 1}`, pct(x) + ' full'])));
       parts.push(`<p>${LW.S.useParking ? 'Parking is a weak occupancy signal downtown (garages, transit): a discrepancy is something to investigate, never proof.' : 'The brief ignores parking evidence.'}</p>`);
     }
-    if (k === 'plate' || k === 'core' || k === 'f2f' || k === 'floors') {
-      if (b.ev.matterport) { const I = b.ev.matterport; parts.push('<h4>Matterport record</h4>' + kv([['Model id', I.model_id], ['Scanned', I.scanned ? 'yes' : 'no'],
+    if (k === 'plate' || k === 'core' || k === 'f2f' || k === 'floors' || k === 'ceil') {
+      if (b.ev.matterport && b.ev.matterport.ceil) { const I = b.ev.matterport, cs = b.ev.costar || {};
+        parts.push('<h4>Measured in the Matterport scans</h4>' + kv([
+          ['Clear ceiling', `${I.ceil} ft${I.ceil_min != null && I.ceil_max !== I.ceil_min ? ` (scans range ${I.ceil_min}–${I.ceil_max} ft)` : ''}: the middle value by scanned area`],
+          ['Office scans used', I.scans], ['Largest scan', I.scan_name ? `${I.scan_name} · ${fmt(I.scan_area)} sq ft${I.scan_extent ? ' · reaches ' + I.scan_extent.replace('x', ' × ') + ' ft' : ''}` : null],
+          ['Against CoStar', cs.typical_sqft && I.scan_area ? `${Math.round(100 * I.scan_area / cs.typical_sqft)}% of the ${fmt(cs.typical_sqft)} sq ft typical floor` : null],
+          ['Against the map', I.scan_area ? `the footprint is ${fmt(b.footprint)} sq ft` : null]])
+          + `<p><b>How it is used.</b> Homes need a clear ceiling of at least ${LW.A.ceilHard} ft; ${LW.A.ceilGood} ft or more is comfortable. This is the finished office ceiling, so a home can only gain height when it is removed.
+          The slab above is at least ${LW.A.slabFt} ft higher, so floor-to-floor is at least ${LW.scanF2f(b)} ft: the estimate is no longer tested below that.
+          Lobbies, tunnels, gyms and unnamed scans are never used, and a building needs 2,000 sq ft of scanned office space.</p>`); }
+      if (b.ev.matterport) { const I = b.ev.matterport; parts.push('<h4>Matterport record</h4>' + kv([['Model id', I.model_id], ['Scanned', I.scanned ? 'yes' : 'no'], ['Notes', I.notes],
         ['Plate', I.W && I.D ? `${I.W} × ${I.D} ft` : null], ['Floor-to-floor', I.f2f ? I.f2f + ' ft' : null], ['Core', I.core ? I.core.map(Math.round).join(', ') + ' (x0, y0, x1, y1 ft)' : null]])); }
       const c = b.ev.costar;
       if (c) parts.push('<h4>CoStar property record</h4>' + kv([['CoStar id', c.costar_id], ['Storeys', c.floors], ['Class / rating', c.class ? `${c.class}${c.rating ? ', ' + c.rating + '-star' : ''}` : null],
@@ -483,7 +505,7 @@ ${LW.briefText(LW.S)}
 - **Daylight test:** ${sm.daylit_pct}% of the usable floor is homes within ${LW.S.u} ft of a window${sm.dim_homes != null ? ' that sees the sky' : ''}.${sm.lightwell ? ' A lightwell cut brings light to the core.' : ''}
 - **Preliminary fire screen (${LW.SAFE_LABEL[sm.fire_screen].toLowerCase()}):** farthest home about ${sm.farthest_home_ft} ft from a stair; stairs about ${sm.stair_sep_ft} ft apart (estimates; ${sf.assumed[0].toLowerCase()}).${sm.fire_notes.length ? ' ' + sm.fire_notes.join('. ') + '.' : ''}
 - **Daylight from neighbours (screening):** ${sm.dim_homes == null ? 'not checked' : `${fmt(sm.dim_homes)} homes face a nearby building at the ${sm.daylight_rule_deg}° limit${sm.daylight_strict ? ' (not counted: strict)' : ' (they lower the daylight score)'}`}.
-${sm.hidden_vacancy_flag ? '- **Observation to investigate:** reported occupancy and observed parking disagree on every capture. This is not a finding; check the rent roll.\n' : ''}${sm.assumed && sm.assumed.length ? sm.assumed.map(a => `- **Assumption:** ${a}.`).join('\n') + '\n' : ''}${fresh && R.review && R.review.length ? '\n## Agent review\n' + R.review.map(x => '- ' + x.replace(/<[^>]+>/g, '')).join('\n') + '\n' : ''}
+${sm.hidden_vacancy_flag ? '- **Observation to investigate:** reported occupancy and observed parking disagree on every capture. This is not a finding; check the rent roll.\n' : ''}${LW.recordCheck(b).filter(f => f.key !== 'parking').map(f => `- **Record check (to investigate):** ${f.title.toLowerCase()}: ${f.a[1]} [${f.a[0]}] against ${f.b[1]} [${f.b[0]}].\n`).join('')}${LW.ceilOf(b) != null ? `- **Measured in the Matterport scan:** ${b.ceil} ft clear ceilings in scanned office space [MATTERPORT], so the height test does not rest on the floor-to-floor estimate.\n` : ''}${sm.assumed && sm.assumed.length ? sm.assumed.map(a => `- **Assumption:** ${a}.`).join('\n') + '\n' : ''}${fresh && R.review && R.review.length ? '\n## Agent review\n' + R.review.map(x => '- ' + x.replace(/<[^>]+>/g, '')).join('\n') + '\n' : ''}
 ## Proposal
 - ${fmt(sm.homes)} homes: ${sm.mix.studio} studios, ${sm.mix.one_bed} one-beds, ${sm.mix.two_bed} two-beds (${sm.homes_per_floor} per floor; ground floor kept as lobby and retail).
 ${LW.phaseOne(b) ? `- **Phase one:** floors ${LW.phaseOne(b).from}-${LW.phaseOne(b).to} are already empty [${tagOf('vacant')}]: ${fmt(LW.phaseOne(b).homes)} homes can start now; convert the rest as leases end.\n` : ''}${LW.fastTrack ? `- **Texas fast-track (SB 840 / 2477):** ${LW.FT_LABEL[LW.fastTrack(b).status].toLowerCase()}${LW.movePlan && LW.movePlan.tower === b.id && LW.movePlan.moves.length ? `; plan: move ${LW.movePlan.moves.length} tenants into ${LW.movePlan.receivers.join(', ')} for about ${LW.bigMoney(LW.movePlan.cost)} (estimate${LW.movePlan.moves.some(m => m.src !== 'COSTAR') ? ', simulated tenants' : ''})${LW.moveChallenge ? `; red team: ${LW.VERDICT[LW.moveChallenge.verdict].toLowerCase()}` : ''}` : ''}. Screening, not legal advice.\n` : ''}- Estimated ${money(sm.cost_per_home)} per home, against roughly ${money(LW.A.newBuildPerHome)} for new construction.

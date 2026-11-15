@@ -19,6 +19,8 @@ const scenarios = [
   { S: { u: 30, cap: 300000, allowLW: true, minHomes: 20, useParking: true, require: [], neighbours: false } },
   // real CoStar paths: sprinkler records, converted buildings, tenants sharing floors, lease ends not on record
   { S: { u: 30, cap: 300000, allowLW: true, minHomes: 20, useParking: true, require: [] }, costar: true },
+  // Matterport: clear ceilings measured in scans (low, tight, comfortable, tall), some on towers with a real floor-to-floor record
+  { S: { u: 30, cap: 300000, allowLW: true, minHomes: 20, useParking: true, require: [] }, scan: true },
 ];
 // CoStar-like tenants: two tenants on every other floor, and some leases with no end on record (null)
 const realTenants = b => { const empty = new Set(b.vacantFloors), out = []; let i = 0;
@@ -37,12 +39,13 @@ for (const sc of scenarios) {
     if (sc.missing && b.idx % 5 === 2) { b.rep = null; b.year = null; }
     if (sc.missing && b.idx % 5 === 3) b.obs = [];
     if (sc.costar) { b.sprinklers = [true, false, null][b.idx % 3]; if (b.idx % 11 === 5) b.converted = 2022; if (b.idx % 4 === 0) b.tenants = realTenants(b); }
+    if (sc.scan && b.idx % 3 !== 1) { b.ceil = [7, 8.5, 9, 12.1][b.idx % 4]; if (b.idx % 6 === 0) b.src = { ...b.src, f2f: 'COSTAR' }; }
     LW.analyze(b);
     const L = b.plan.L, issues = LW.checkLayout(L, b.W, b.D);
     rows.push({ input: { id: b.id, W: b.W, D: b.D, heightM: b.heightM, floors: b.floors, f2f: b.f2f, year: b.year, rep: b.rep,
       obs: b.obs, scanned: b.scanned, core: b.core, forceLW: b.forceLW, real: b.real, vacantFloors: b.vacantFloors, center: b.center, day: b.day,
-      sprinklers: b.sprinklers ?? null, converted: b.converted ?? null, tenants: b.tenants ?? null,
-      src: { vacant: LW.srcOf(b, 'vacant') } }, summary: LW.summary(b), issues,
+      sprinklers: b.sprinklers ?? null, converted: b.converted ?? null, tenants: b.tenants ?? null, ceil: b.ceil ?? null,
+      src: { vacant: LW.srcOf(b, 'vacant'), f2f: LW.srcOf(b, 'f2f'), core: LW.srcOf(b, 'core'), rep: LW.srcOf(b, 'rep') } }, summary: LW.summary(b), issues,
       courtOK: b.courtOK, altIssues: b.alt ? LW.checkLayout(b.alt.L, b.W, b.D) : [] });
     copies.push(b);
   }
@@ -50,7 +53,9 @@ for (const sc of scenarios) {
   copies.forEach((b, i) => { const r = rows[i]; r.fastTrack = LW.fastTrack(b);
     r.moves = { fast: LW.planMoves(b, copies, 'fast'), empty: LW.planMoves(b, copies, 'empty') };
     r.challenge = LW.challengePlan(b, r.moves.fast, copies); });
-  out.push({ S: sc.S, A: LW.A, rows });
+  // evidence review on the leaders (the what-if for floor-to-floor stops at what a measured ceiling allows)
+  const lead = copies.filter(b => b.pass).sort((a, c) => c.score - a.score).slice(0, 6).map(b => b.id);
+  out.push({ S: sc.S, A: LW.A, rows, review: { ids: lead, gaps: LW.reviewGaps(copies, lead) } });
 }
 fs.writeFileSync(path.join(root, 'tests/js_results.json'), JSON.stringify(out));
 

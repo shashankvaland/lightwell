@@ -18,12 +18,13 @@ import uuid
 from engine import clamp as clamp_
 from scout import SC as SCOUT, apply_estimates, data_priority, scout_gaps
 from shuffle import FT_LABEL, P as POLICY, challenge_plan as _challenge, fast_track, plan_moves, tenants_of
-from engine import (SAFE_LABEL, Building, LAYER_NAME, WHATIF, analyze, current_value, jround, parse_measurement, review_gaps, summary)
+from engine import (SAFE_LABEL, Building, LAYER_NAME, WHATIF, analyze, ceil_of, current_value, jround, parse_measurement, review_gaps,
+                    scan_settles, summary)
 
 MODEL = os.environ.get("LIGHTWELL_MODEL", "anthropic:claude-opus-5-5")
 ASK_TIMEOUT_S = int(os.environ.get("LIGHTWELL_ASK_TIMEOUT", "300"))
 FIELDS = ("id", "W", "D", "heightM", "floors", "f2f", "year", "rep", "obs", "scanned", "core", "forceLW", "real", "src", "vacantFloors", "center", "tenants", "day",
-          "sprinklers", "converted")
+          "sprinklers", "converted", "ceil", "records")
 BRIEF_KEYS = ("u", "cap", "allowLW", "minHomes", "useParking", "require", "neighbours", "dayLim", "dayStrict")
 
 
@@ -169,10 +170,19 @@ def make_tools(s: Session):
         return json.dumps(out)
 
     def read_floor_plates(tower_ids: list[str]) -> str:
-        """Floor-plate data: width, depth, floor-to-floor height (ft), core rectangle, each with its source tag (MATTERPORT, OSM, ESTIMATE, ASSUMED)."""
+        """Floor-plate data: width, depth, floor-to-floor height (ft), core rectangle, each with its source tag (MATTERPORT, OSM,
+        ESTIMATE, ASSUMED), plus scan_ceiling_ft: the clear ceiling measured in CoStar's Matterport scans of office space
+        (None when no scan measured it). A measured ceiling decides the height test, so floor-to-floor needs no site visit."""
         out = {t: {"W": s.get(t).W, "D": s.get(t).D, "plate_src": s.get(t).src.get("plate"), "f2f": s.get(t).f2f,
-                   "f2f_src": s.get(t).src.get("f2f"), "core": s.get(t).core, "core_src": s.get(t).src.get("core")} for t in tower_ids}
-        s.emit("Matterport", f"{s.src(tower_ids, 'interior')}: floor plates for {len(out)} towers.")
+                   "f2f_src": s.get(t).src.get("f2f"), "core": s.get(t).core, "core_src": s.get(t).src.get("core"),
+                   "scan_ceiling_ft": ceil_of(s.get(t))} for t in tower_ids}
+        scans = [t for t in tower_ids if ceil_of(s.get(t)) is not None]
+        if scans:
+            s.emit("Matterport", f"Measured clear ceilings in the scans of {len(scans)} of {len(out)} towers ("
+                   + ", ".join(f"{t} {ceil_of(s.get(t)):g} ft" for t in scans[:3]) + (", …" if len(scans) > 3 else "")
+                   + "). They decide the height test there; plates stay the map footprint, cores assumed.", ids=scans[:3])
+        else:
+            s.emit("Matterport", f"{s.src(tower_ids, 'interior')}: floor plates for {len(out)} towers.")
         return json.dumps(out)
 
     def rank_towers(limit: int = 10) -> str:
@@ -239,7 +249,10 @@ def make_tools(s: Session):
         return json.dumps(out)
 
     def find_occupancy_mismatches() -> str:
-        """Towers whose reported occupancy is far above what aerial parking counts show: observations to investigate, not findings."""
+        """Evidence cross-check. occupancy: towers whose reported occupancy is far above what aerial parking counts show.
+        record_check: places where two independent records about a tower disagree (CoStar property, tenancy and sale records,
+        Matterport scans, the OpenStreetMap footprint and height), each with both sources and values.
+        All of these are observations to investigate, never findings or accusations."""
         s.analyse_all()
         flags = [{"id": b.id, "reported_pct": jround(b.rep * 100), "max_parking_pct": jround(max(b.obs) * 100),
                   "real": bool(b.real.get("market") and b.real.get("aerial"))} for b in s.buildings.values() if b.phantom]
@@ -247,7 +260,17 @@ def make_tools(s: Session):
         s.emit("Forensics", ("Parking ignored by the brief: no occupancy comparison." if not s.S.get("useParking", True) else
                f"{len(flags)} occupancy discrepancies to investigate ({n_real} on real data): {', '.join(f['id'] for f in flags) or 'none'}."),
                stage="flags")
-        return json.dumps(flags)
+        # record cross-check (computed in the browser, lightwell/js/records.js): where two independent sources disagree
+        recs = [{"id": b.id, **r} for b in s.buildings.values() for r in (b.records or [])]
+        if recs:
+            towers = sorted({r["id"] for r in recs})
+            eg = next((r for r in recs if not r.get("sim")), recs[0])
+            s.emit("Forensics", f"Record cross-check: {len(recs)} place{'s' if len(recs) != 1 else ''} where two sources disagree, on {len(towers)} "
+                   f"tower{'s' if len(towers) != 1 else ''} ({sum(1 for r in recs if not r.get('sim'))} on real data). For example {eg['id']}: "
+                   f"{eg['title'][0].lower() + eg['title'][1:]} ({eg['a']}; {eg['b']}). Observations to investigate, not findings.", ids=[eg["id"]])
+        else:
+            s.emit("Forensics", "Record cross-check: no two sources disagree on any tower.")
+        return json.dumps({"occupancy": flags, "record_check": recs[:12]})
 
     def review_evidence(tower_ids: list[str]) -> str:
         """Review step. For each shortlisted tower, list values that are estimated, assumed, simulated or missing, and test
@@ -264,6 +287,10 @@ def make_tools(s: Session):
             msg = "No missing value would change the shortlist; the remaining estimates are noted in the memo."
         s.review.append(msg)
         s.emit("Review", msg, ids=[rel[0]["id"]] if rel else None)
+        done = next((g for g in gaps if g["field"] == "f2f" and g["scan_ceil"] is not None and not g["relevant"]), None)
+        if done:   # a Matterport scan answered the height question: no measurement to ask for
+            s.review.append(scan_settles(done))
+            s.emit("Matterport", scan_settles(done), ids=[done["id"]])
         return json.dumps(gaps[:8])
 
     def request_measurement(tower_id: str, field: str, why: str) -> str:
