@@ -23,6 +23,12 @@
     moveCostSqft: 15,        // tenant move: moving + fit-out allowance, $ per sq ft (tenant moves)
     buyoutSqftYr: 30,        // early lease exit: rent concession, $ per sq ft per year left after next year
     unknownLeaseYrs: 3,      // years of concessions assumed when a tenant's lease end is not on record (real CoStar tenants)
+    // rent check (rent.js): estimates, editable in the Assumptions panel
+    yieldOnCost: 0.065,      // target return: yearly net rent / conversion cost (typical multifamily development target)
+    opexPerHomeYr: 7000,     // operating cost per home per year (taxes, insurance, staff, repairs)
+    rentVacancy: 0.05,       // share of homes empty at any time
+    rentBurden: 0.30,        // affordable = rent at most 30% of household income (HUD rule of thumb)
+    medianIncome: 62900,     // City of Houston median household income (US Census ACS 2019-2023, about $62.9k)
   };
   // The brief: live constraints from the request and the sliders.
   // neighbours / dayLim / dayStrict: Daylight X-ray (see LW.wallAngle below).

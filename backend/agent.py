@@ -16,6 +16,7 @@ import queue
 import uuid
 
 from engine import clamp as clamp_
+from rent import RENT_LABEL, rent_check
 from scout import SC as SCOUT, apply_estimates, data_priority, scout_gaps
 from shuffle import FT_LABEL, P as POLICY, challenge_plan as _challenge, fast_track, plan_moves, tenants_of
 from engine import (SAFE_LABEL, Building, LAYER_NAME, WHATIF, analyze, current_value, jround, parse_measurement, review_gaps, summary)
@@ -23,7 +24,7 @@ from engine import (SAFE_LABEL, Building, LAYER_NAME, WHATIF, analyze, current_v
 MODEL = os.environ.get("LIGHTWELL_MODEL", "anthropic:claude-opus-5-5")
 ASK_TIMEOUT_S = int(os.environ.get("LIGHTWELL_ASK_TIMEOUT", "300"))
 FIELDS = ("id", "W", "D", "heightM", "floors", "f2f", "year", "rep", "obs", "scanned", "core", "forceLW", "real", "src", "vacantFloors", "center", "tenants", "day",
-          "sprinklers", "converted")
+          "sprinklers", "converted", "rentMarket")
 BRIEF_KEYS = ("u", "cap", "allowLW", "minHomes", "useParking", "require", "neighbours", "dayLim", "dayStrict")
 
 
@@ -473,13 +474,25 @@ def make_tools(s: Session):
         return json.dumps({"brief": S2, "pass_now": len(now), "pass_then": len(then), "newly_pass": sorted(then - now),
                            "stop_passing": sorted(now - then), "leader_then": lead.id if lead else None})
 
+    def check_rents(tower_ids: list[str]) -> str:
+        """Rent check: the monthly rent per home each tower needs to pay back its conversion (cost per home x target
+        yield + operating cost, after vacancy), against real asking rents from CoStar listings nearby (median by bedroom
+        count, or per sq ft x home size), the cost per home the market supports, and the income needed at 30% of income
+        vs Houston's median. verdict: works / close (within 10%) / gap / no_data (no CoStar rents loaded)."""
+        s.analyse_all()
+        out = {t: rent_check(s.get(t), s.A) for t in tower_ids if t in s.buildings}
+        txt = rent_text(s, list(out))
+        if txt:
+            s.emit("Rent", txt, ids=list(out)[:1])
+        return json.dumps(out)
+
     def answer_user(text: str, tower_ids: list[str] | None = None) -> str:
         """Ask mode only: give the final answer to the user's question. text: plain sentences, short, with numbers and
         source tags. tower_ids: towers to highlight on the map (first one is selected)."""
         s.answer = {"text": text, "ids": [t for t in (tower_ids or []) if t in s.buildings]}
         return json.dumps({"ok": True})
 
-    return dict(list_towers=list_towers, get_brief=get_brief, estimate_missing_data=estimate_missing_data,
+    return dict(check_rents=check_rents, list_towers=list_towers, get_brief=get_brief, estimate_missing_data=estimate_missing_data,
                 rank_data_requests=rank_data_requests, explain_tower=explain_tower, compare_towers=compare_towers,
                 preview_brief=preview_brief, answer_user=answer_user, update_brief=update_brief, get_market_records=get_market_records,
                 count_parking=count_parking, read_floor_plates=read_floor_plates, rank_towers=rank_towers,
@@ -503,6 +516,7 @@ Then, keeping every step short:
    data-scout: if towers have no CoStar record, estimate their missing occupancy from comparable CoStar towers
    (estimate_missing_data), and after ranking, list which towers to ask CoStar about next (rank_data_requests).
 3. feasibility-engineer: rank the towers, then test conversion, the fire screen and check_daylight for the top 3.
+   market-analyst: check_rents for the top 3 passing towers: does the real CoStar market rent cover the rent each needs?
 4. policy-analyst: Texas fast-track status for the top 5 passing towers.
 5. Review: call review_evidence on the top 3 passing towers. If a gap is decision-relevant for the leader, call
    request_measurement for it (one sentence why). After the answer, call rank_towers again and explain how the ranking
@@ -525,7 +539,7 @@ def run_llm(s: Session):
     t = make_tools(s)
     market = {"name": "market-analyst", "description": "Pulls CoStar market records and Vexcel parking counts; finds occupancy discrepancies.",
               "system_prompt": "Use your tools on the tower ids you are given. Return a short factual summary with source tags.",
-              "tools": [t["get_market_records"], t["count_parking"], t["find_occupancy_mismatches"]]}
+              "tools": [t["get_market_records"], t["count_parking"], t["find_occupancy_mismatches"], t["check_rents"]]}
     feas = {"name": "feasibility-engineer", "description": "Reads floor plates, ranks towers, tests conversion, the preliminary fire screen and daylight from neighbours.",
             "system_prompt": "Use rank_towers first, then test_conversion, check_fire_safety and check_daylight on the towers you are asked about. Be brief.",
             "tools": [t["read_floor_plates"], t["rank_towers"], t["test_conversion"], t["check_fire_safety"], t["check_daylight"]]}
@@ -567,10 +581,23 @@ Context: Texas SB 840 / SB 2477 (Sep 2025) let 5+ year old offices convert by ri
 the screen (daylight, cost per home, fire screen, Texas fast-track, tenant moves) and the data sources are in your tools.
 Answer with the tools, never from memory: explain_tower, compare_towers, rank_towers, preview_brief (what-if without
 changing anything), update_brief (only if the user asks to change the brief), estimate_missing_data and
-rank_data_requests (towers with no CoStar record), check_texas_fast_track, plan_tenant_moves, challenge_plan, check_daylight.
+rank_data_requests (towers with no CoStar record), check_rents (rent needed vs real CoStar asking rents, affordability), check_texas_fast_track, plan_tenant_moves, challenge_plan, check_daylight.
 Then call answer_user once: at most 6 short sentences, concrete numbers, tower ids like HOU-07, and say when a value is
 ESTIMATE, SIMULATED, ASSUMED or MISSING rather than measured. Never call a tower fire-safe or daylight-compliant; the
 fast-track screen is not legal advice. Use at most 8 tool calls."""
+
+
+def rent_text(s: Session, ids):
+    """Same sentence as LW.rentText in lightwell/js/agent.js."""
+    R = [(t, rent_check(s.get(t), s.A)) for t in ids]
+    R = [(t, r) for t, r in R if r]
+    if not R:
+        return None
+    if all(r["verdict"] == "no_data" for _, r in R):
+        return ("Rent needed per home: " + ", ".join(f"{t} ${r['required']:,}/month" for t, r in R)
+                + ". No CoStar rents loaded to compare (run backend/rent_comps.py).")
+    return "; ".join(f"{t}: needs ${r['required']:,}/month, nearby CoStar listings ask ${r['market']:,} ({r['n']} within {r['radius_m']:,} m): "
+                     f"{RENT_LABEL[r['verdict']].lower()}" for t, r in R if r["verdict"] != "no_data") + "."
 
 
 def run_ask(s: Session):
@@ -582,7 +609,7 @@ def run_ask(s: Session):
     agent = create_deep_agent(model=MODEL, tools=[t[k] for k in (
         "list_towers", "get_brief", "update_brief", "rank_towers", "explain_tower", "compare_towers", "preview_brief",
         "estimate_missing_data", "rank_data_requests", "check_texas_fast_track", "list_tenants", "plan_tenant_moves",
-        "challenge_plan", "check_daylight", "test_conversion", "check_fire_safety", "answer_user")], system_prompt=ASK_PROMPT)
+        "challenge_plan", "check_daylight", "test_conversion", "check_fire_safety", "check_rents", "answer_user")], system_prompt=ASK_PROMPT)
     msgs = [{"role": m["role"], "content": str(m["text"])[:1500]} for m in s.history[-6:] if m.get("role") in ("user", "assistant") and m.get("text")]
     msgs.append({"role": "user", "content": s.question})
     result = agent.invoke({"messages": msgs})
@@ -636,6 +663,9 @@ def run_scripted(s: Session):
         if rel:
             g = rel[0]
             t["request_measurement"](g["id"], g["field"], f"At {g['what_if']}, {g['id']} {g['decision']}.")
+    passing = [b.id for b in s.ranked() if b.passes][:3]
+    if passing:
+        t["check_rents"](passing)
     run_deal(s, t)
     run_pick(s, t)
 

@@ -3,7 +3,8 @@
   const LW = window.LW, $ = id => document.getElementById(id);
   const fmt = n => Math.round(n).toLocaleString(), money = n => isFinite(n) && n != null ? '$' + Math.round(n / 1000) + 'k' : '—', pct = x => x == null ? '—' : Math.round(x * 100) + '%';
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-  Object.assign(LW, { fmt, money, pct, esc });
+  const usd = n => n == null || !isFinite(n) ? '—' : '$' + Math.round(n).toLocaleString();
+  Object.assign(LW, { fmt, money, pct, esc, usd });
   LW.scored = false; LW.flagsShown = false; LW.selected = null; LW.reviewed = null;
   const LAYERS = { market: 'CoStar', aerial: 'Vexcel', interior: 'Matterport' };
 
@@ -78,6 +79,15 @@
   // A source tag is a button: it opens the evidence drawer for that field.
   const tagFor = (b, k, label) => { const s = k ? LW.srcOf(b, k) : label; return `<button class="tag ${LW.SRC_CLASS[s] || 't-est'}" data-ev="${k || ''}" title="Show the evidence">${s}</button>`; };
   const row = (b, k, text, label) => `<div class="find">${tagFor(b, k, label)}<span>${text}</span></div>`;
+  // Rent check: real CoStar asking rents nearby vs the rent this conversion needs (js/rent.js)
+  function rentRow(b) {
+    const r = LW.rentCheck(b); if (!r) return '';
+    const head = `<button class="tag t-rent ${r.verdict}" data-ev="rent" title="Show the evidence">RENT CHECK</button>`;
+    if (r.verdict === 'no_data') return `<div class="find">${head}<span><b>Needs about ${usd(r.required)}/month per home</b> to pay back the conversion. No CoStar rents loaded to compare (run backend/rent_comps.py).</span></div>`;
+    return `<div class="find">${head}<span><b>${LW.RENT_LABEL[r.verdict]}.</b> Needs ${usd(r.required)}/month per home; ${r.n} CoStar listings within ${fmt(r.radius_m)} m ask about ${usd(r.market)}`
+      + ` (${r.gap >= 0 ? '+' : '−'}${usd(Math.abs(r.gap))}). The market supports up to ${money(r.supports_cost_per_home)} per home.`
+      + ` Affordable on ${money(r.income_needed)}/yr, ${pct(r.income_share)} of Houston's median income.</span></div>`;
+  }
   // A mini elevation of the tower: one bar per floor, empty floors gold, the biggest empty block outlined.
   function stackSvg(b) {
     const n = LW.eff(b, 'floors'), H = Math.min(150, Math.max(60, n * 4)), fh = H / n, W = 30, empty = new Set(b.vacantFloors);
@@ -179,6 +189,7 @@
       ${b.sprinklers === true || b.sprinklers === false ? row(b, 'sprinklers', b.sprinklers ? 'Sprinklers on record' : 'No sprinklers on record: a full retrofit is priced in') : ''}
       ${row(b, 'rep', rep == null ? 'Leased: unknown' : b.ev.scout && LW.srcOf(b, 'rep') === 'ESTIMATE'
         ? `About ${pct(rep)} leased (scout estimate, ${pct(b.ev.scout.lo)}–${pct(b.ev.scout.hi)}, ${b.ev.scout.confidence} confidence)` : `${pct(rep)} leased`)}
+      ${rentRow(b)}
       ${row(b, 'year', year == null ? 'Year built: unknown' : `Built ${year}${cs.renovated && LW.srcOf(b, 'year') === 'COSTAR' ? ` · renovated ${esc(cs.renovated)}` : ''}`)}
       ${row(b, 'obs', parkTxt)}
       ${row(b, null, `Vacancy signal ${pct(b.vac)} (from ${b.vacBasis})`, b.vacBasis === 'assumed' ? 'ASSUMED' : 'FEASIBILITY')}
@@ -235,7 +246,7 @@
 
   // ---------- evidence drawer ----------
   const kv = rows => `<table class="kv">${rows.filter(r => r[1] != null && r[1] !== '').map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`;
-  const FIELD = { sprinklers: 'Sprinklers', vacant: 'Empty floors', floors: 'Floors and height', plate: 'Floor plate', core: 'Core', f2f: 'Floor-to-floor height', rep: 'Percent leased', year: 'Year built', obs: 'Parking occupancy', fire: 'Preliminary fire screen', texas: 'Texas conversion fast-track', daylight: 'Daylight from neighbours', '': 'Calculated value' };
+  const FIELD = { rent: 'Rent check', sprinklers: 'Sprinklers', vacant: 'Empty floors', floors: 'Floors and height', plate: 'Floor plate', core: 'Core', f2f: 'Floor-to-floor height', rep: 'Percent leased', year: 'Year built', obs: 'Parking occupancy', fire: 'Preliminary fire screen', texas: 'Texas conversion fast-track', daylight: 'Daylight from neighbours', '': 'Calculated value' };
   const SRC_TXT = {
     OSM: 'From the OpenStreetMap building record (footprint, height or levels tags).',
     ESTIMATE: 'Estimated by Lightwell from other values; not measured.',
@@ -246,7 +257,7 @@
     MISSING: 'No value in any loaded data layer.', YOU: 'Corrected by you in this session.',
   };
   LW.evidence = function (b, k) {
-    const s = k && k !== 'fire' && k !== 'texas' ? LW.srcOf(b, k) : null, p = b.plan, sf = p.safety, parts = [];
+    const s = k && k !== 'fire' && k !== 'texas' && k !== 'rent' ? LW.srcOf(b, k) : null, p = b.plan, sf = p.safety, parts = [];
     if (s) parts.push(`<p><span class="tag ${LW.SRC_CLASS[s]}">${s}</span> ${SRC_TXT[s] || ''}</p>`);
     if (s === 'YOU') parts.push(kv([['Your value', JSON.stringify(b.overrides[k])], ['Original', JSON.stringify(b[k])], ['Original source', (b.src || {})[k]]]));
     if (k === 'rep' || k === 'year') {
@@ -267,6 +278,20 @@
         + kv(sc.neighbours.map(x => { const t = LW.B.find(y => y.id === x.id); return [t ? t.label : x.id, `${pct(x.leased)} leased · ${fmt(x.dist_m)} m away`]; })));
       if (k === 'year' && LW.eff(b, 'year') == null) parts.push(`<p>Engine assumption: costs use ${LW.A.unknownYear} (abatement and sprinkler retrofit included), age fit neutral.</p>`);
       if (k === 'rep' && LW.eff(b, 'rep') == null) parts.push(`<p>Engine assumption: vacancy from ${b.vacBasis}${b.vacBasis === 'assumed' ? ` (${pct(LW.A.unknownVacancy)}, Houston average)` : ''}.</p>`);
+    }
+    if (k === 'rent') {
+      const r = LW.rentCheck(b), m = b.rentMarket, A = LW.A;
+      parts.push(`<p><span class="tag ${m ? 't-cs' : 't-miss'}">${m ? 'COSTAR' : 'MISSING'}</span> ${m ? 'Asking rents from residential listings and multifamily records in the CoStar data kit (backend/rent_comps.py).' : 'No CoStar rents loaded: run backend/rent_comps.py, then backend/import_data.py.'}</p>
+        <p><b>Rent this conversion needs</b> = (cost per home × ${Math.round(A.yieldOnCost * 1000) / 10}% target yield + ${usd(A.opexPerHomeYr)} operating cost a year) ÷ 12 ÷ ${pct(1 - A.rentVacancy)} occupied
+        = <b>${usd(r && r.required)}/month</b>. Yield, operating cost and vacancy are estimates (Assumptions panel).</p>`);
+      if (r && m && r.verdict !== 'no_data') {
+        parts.push('<h4>Market rent for this layout</h4>' + kv(r.types.map(x => [`${x.homes} × ${LW.RENT_TYPES[x.t]} (~${x.area} sq ft)`, `${usd(x.rent)}/month · ${x.basis}`]))
+          + kv([['Average across the mix', usd(r.market) + '/month'], ['Rent needed', usd(r.required) + '/month'], ['Gap', (r.gap >= 0 ? '+' : '−') + usd(Math.abs(r.gap))],
+            ['Cost per home the market supports', usd(r.supports_cost_per_home)], ['Income to afford it (30% rule)', `${usd(r.income_needed)}/yr, ${pct(r.income_share)} of Houston's median (${usd(A.medianIncome)}, US Census ACS)`],
+            ['Listings used', `${m.n} within ${fmt(m.radius)} m${m.psf ? `; median $${m.psf}/sq ft from ${m.psfN}` : ''}`]]));
+        parts.push('<h4>Nearest listings</h4>' + kv(m.nearest.map(x => [`${fmt(x.dist_m)} m away`, `${usd(x.rent)}/month${x.beds != null ? ` · ${x.beds ? x.beds + '-bed' : 'studio'}` : ''}${x.sqft ? ` · ${fmt(x.sqft)} sq ft` : ''}`])));
+      }
+      parts.push('<p>A screen, not an appraisal: asking rents, not signed leases; new conversions often rent above older stock.</p>');
     }
     if (k === 'texas') {
       const ft = LW.fastTrack(b);
@@ -530,7 +555,9 @@ _Screening estimates. Verify with an architect, fire engineer and cost consultan
     ['newBuildPerHome', 'New-build cost per home ($)', 1], ['carbonKgPerM2', 'New-build carbon (kg CO₂e/m²)', 1], ['reuseSaving', 'Carbon avoided by reuse (%)', 100],
     ['maxTravelFt', 'Max travel to a stair (ft)', 1], ['f2fHard', 'Lowest usable floor-to-floor (ft)', 1],
     ['moveCostSqft', 'Tenant move allowance ($/sq ft)', 1], ['buyoutSqftYr', 'Early lease exit ($/sq ft/yr left)', 1],
-    ['unknownLeaseYrs', 'Lease end not on record: years left', 1]];
+    ['unknownLeaseYrs', 'Lease end not on record: years left', 1],
+    ['yieldOnCost', 'Rent check: target yield on cost (%)', 100], ['opexPerHomeYr', 'Operating cost per home ($/yr)', 1],
+    ['rentVacancy', 'Rental vacancy (%)', 100], ['medianIncome', 'Houston median household income ($)', 1]];
   function buildAssumptions() {
     $('assume').innerHTML = AS.map(([k, label, m]) => `<label class="row">${label}<input data-k="${k}" data-m="${m}" type="number" step="${k === 'f2fHard' ? 0.5 : 1}" value="${+(LW.A[k] * m).toFixed(1)}"></label>`).join('');
     $('assume').querySelectorAll('input').forEach(inp => inp.oninput = () => { const v = +inp.value; if (!isFinite(v) || v <= 0) return;

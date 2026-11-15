@@ -54,11 +54,15 @@ attacks the plan before you see it. The app opens with a short, sourced screen o
     with a range, a confidence and the towers it used (evidence drawer). Estimates are tagged ESTIMATE and still fail
     *Require real: CoStar*. It also ranks **which towers to ask CoStar about next**: the ones where the missing data would
     change the decision (pass/fail flips, big score swings, the 65% check needs floor-by-floor data).
-14. **Ask Lightwell:** a chat in the dashboard. Ask about any tower, compare towers, try a what-if ("what if the cap were
+14. **Rent check (CoStar rents):** the monthly rent each converted home needs to pay back its cost (cost per home x
+    6.5% target yield + operating cost, after vacancy) against real asking rents from CoStar listings within 1.2 km
+    (by bedroom count, or per sq ft x the home's size on the layout). Shows the cost per home the market supports and the
+    income needed to afford it vs Houston's median. With no CoStar rents loaded it says so; nothing is simulated.
+15. **Ask Lightwell:** a chat in the dashboard. Ask about any tower, compare towers, try a what-if ("what if the cap were
     $350k?", with an *Apply* button), the Texas fast-track, tenant moves or the data gaps. Tower ids are links to the map.
     With an Anthropic key, Claude answers through deepagents with the agent's tools (`POST /api/ask`); without one, the
     browser answers the common questions from the same engine.
-15. **Human in the loop:** correct any value, then approve the memo the agent reviewed. The memo is marked *not
+16. **Human in the loop:** correct any value, then approve the memo the agent reviewed. The memo is marked *not
    reviewed* as soon as the brief, an assumption, a correction or the lightwell choice changes. Export a portfolio memo
    and a CSV with a source column per field.
 
@@ -137,6 +141,7 @@ python backend/daylight.py --heights real-data/heights.csv   # columns osm_id,he
 `COSTAR_KIT_DIR` in `.env`), then:
 ```bash
 python backend/costar_kit.py     # downtown office towers + current tenants -> real-data/costar.csv, tenants.csv
+python backend/rent_comps.py     # asking rents near downtown (residential listings, multifamily) -> real-data/rents.csv
 python backend/import_data.py    # -> lightwell/data/real_overlay.js; reload the page
 ```
 The towers then carry their CoStar name, class and rating, percent leased (CoStar's formula, from the listings), empty
@@ -219,6 +224,7 @@ lightwell/              the app (open lightwell/index.html)
   js/agent.js           request -> brief; streams the backend agent (incl. questions), or runs the plan in the browser
   js/shuffle.js         Texas fast-track screen, tenants, tenant-move planner, red team
   js/scout.js           data scout: estimates for towers with no CoStar record, which towers to request next
+  js/rent.js            rent check: CoStar asking rents nearby vs the rent a conversion needs, affordability
   js/ask.js             Ask Lightwell chat (Claude via /api/ask, or offline answers in the browser)
   js/intro.js           start screen: the Texas law and Houston's empty offices (sourced)
   config.example.js     copy to config.js for your keys
@@ -230,6 +236,8 @@ backend/
   engine.py             Python copy of engine.js
   shuffle.py            Python copy of shuffle.js
   scout.py              Python copy of scout.js
+  rent.py               Python copy of the rent check in rent.js
+  rent_comps.py         CoStar kit -> real-data/rents.csv (asking rents near downtown; --show lists the columns found)
   daylight.py           Daylight X-ray precompute: neighbouring buildings seen from every wall
   app.py                FastAPI server streaming agent steps (SSE)
   import_data.py        joins real-data/*.csv to the map

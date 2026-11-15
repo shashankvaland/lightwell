@@ -13,6 +13,8 @@ DEFAULT_ASSUMPTIONS = {
     "newBuildPerHome": 400000, "carbonKgPerM2": 500, "reuseSaving": 0.6, "f2fMin": 12.5, "f2fHard": 10.5, "maxTravelFt": 250,
     "unknownVacancy": 0.25, "unknownYear": 1970, "moveCostSqft": 15, "buyoutSqftYr": 30,
     "unknownLeaseYrs": 3,   # years of concessions assumed when a tenant's lease end is not on record (real CoStar tenants)
+    # rent check (rent.py)
+    "yieldOnCost": 0.065, "opexPerHomeYr": 7000, "rentVacancy": 0.05, "rentBurden": 0.30, "medianIncome": 62900,
 }
 DEFAULT_CONSTRAINTS = {"u": 30, "cap": 300000, "allowLW": True, "minHomes": 20, "useParking": True, "require": [],
                        "neighbours": True, "dayLim": 25, "dayStrict": False}   # last three: Daylight X-ray
@@ -96,6 +98,7 @@ class Building:
     day: dict | None = None           # Daylight X-ray profile from lightwell/data/daylight.json (sent by the browser)
     sprinklers: bool | None = None    # CoStar: True = sprinklered, False = none on record, None = unknown (year rule applies)
     converted: int | None = None      # CoStar: year the building was converted to another use (it then never passes)
+    rentMarket: dict | None = None    # real CoStar asking rents near the tower, summarised by the browser (rent.py)
 
 
 def layout(W, D, u, lw, core=None):

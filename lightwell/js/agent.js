@@ -6,10 +6,10 @@
   const LW = window.LW, $ = id => document.getElementById(id);
   const WHO = { Planner: '#f5b942', Map: '#57c3bd', CoStar: '#b48ae0', Vexcel: '#57c3bd', Matterport: '#8fb0ff',
     Feasibility: '#e0b35a', Safety: '#ff9f6b', Forensics: '#ef8796', Review: '#c7cdda', Agent: '#f5b942', Tool: '#8f9ab0', You: '#5fd38a',
-    Policy: '#7fd1ff', Deals: '#5fd38a', 'Red team': '#ef5d6f', Daylight: '#ffd27a', Scout: '#9be37a', Lightwell: '#f5b942' };
+    Policy: '#7fd1ff', Deals: '#5fd38a', 'Red team': '#ef5d6f', Daylight: '#ffd27a', Scout: '#9be37a', Lightwell: '#f5b942', Rent: '#b48ae0' };
   // The agent team strip: which sub-agent is working right now.
   const TEAM = { Planner: 'planner', Review: 'planner', Map: 'planner', CoStar: 'market', Vexcel: 'market', Forensics: 'market',
-    Matterport: 'feas', Feasibility: 'feas', Safety: 'feas', Policy: 'policy', Deals: 'deals', 'Red team': 'red', Daylight: 'feas', Scout: 'scout' };
+    Matterport: 'feas', Feasibility: 'feas', Safety: 'feas', Policy: 'policy', Deals: 'deals', 'Red team': 'red', Daylight: 'feas', Scout: 'scout', Rent: 'market' };
   function pulse(who) {
     const el = document.querySelector(`#team [data-a="${TEAM[who]}"]`); if (!el) return;
     document.querySelectorAll('#team .on').forEach(x => x.classList.remove('on'));
@@ -162,12 +162,22 @@
         } else review.push(`${g.id}'s ${g.label} is still an estimate.`);
       }
     }
+    await rentStep(passing().slice(0, 3));
     const lead = await runDeal();
     const best = (lead && passing().find(b => b.id === lead)) || passing()[0];
     LW.log('Review', `Kept ${passing().length} towers.${fails.length ? ` Dropped ${fails.map(b => b.id).join(', ')} as likely fire-safety blockers.` : ''} Ranking checked against the brief.`); await sleep(500);
     if (best) LW.reviewed = { top: best.id, summary: LW.summary(best), rationale: '', review, key: LW.inputsKey(), at: new Date(), by: 'the in-browser agent' };
     return best;
   }
+
+  // Rent check on the shortlist (same text as check_rents in backend/agent.py)
+  LW.rentText = function (rows) {
+    const R = rows.map(b => [b, LW.rentCheck(b)]).filter(([, r]) => r);
+    if (!R.length) return null;
+    if (R.every(([, r]) => r.verdict === 'no_data')) return `Rent needed per home: ${R.map(([b, r]) => `${b.id} ${LW.usd(r.required)}/month`).join(', ')}. No CoStar rents loaded to compare (run backend/rent_comps.py).`;
+    return R.filter(([, r]) => r.verdict !== 'no_data').map(([b, r]) => `${b.id}: needs ${LW.usd(r.required)}/month, nearby CoStar listings ask ${LW.usd(r.market)} (${r.n} within ${LW.fmt(r.radius_m)} m): ${LW.RENT_LABEL[r.verdict].toLowerCase()}`).join('; ') + '.';
+  };
+  async function rentStep(P) { const t = LW.rentText(P); if (t) { LW.log('Rent', t); await sleep(600); } }
 
   // Policy screen, tenant moves and red team for the leading towers (same order as run_deal in backend/agent.py).
   async function runDeal() {
@@ -204,7 +214,7 @@
       buildings: LW.B.map(b => ({ id: b.id, W: b.W, D: b.D, heightM: b.heightM, floors: LW.eff(b, 'floors'), f2f: LW.eff(b, 'f2f'),
         year: LW.eff(b, 'year'), rep: LW.eff(b, 'rep'), obs: b.obs || [], scanned: b.scanned, core: LW.eff(b, 'core'),
         forceLW: b.forceLW, real: b.real, vacantFloors: b.vacantFloors || [], center: b.center, tenants: Array.isArray(b.tenants) ? b.tenants : null, src: Object.fromEntries(f.map(k => [k, LW.srcOf(b, k)])), day: b.day,
-        sprinklers: b.sprinklers ?? null, converted: b.converted ?? null })) };
+        sprinklers: b.sprinklers ?? null, converted: b.converted ?? null, rentMarket: b.rentMarket || null })) };
   }
   async function runBackend() {
     const url = backendUrl();

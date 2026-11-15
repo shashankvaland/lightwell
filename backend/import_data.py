@@ -105,8 +105,13 @@ def main():
     features = json.loads(Path(a.geo).read_text(encoding="utf-8"))["features"]
     costar = [r for r in read_csv(src / "costar.csv") if not r.get("property_type") or r["property_type"].lower().startswith("office")]
     parking, interiors, tenants = read_csv(src / "parking.csv"), read_csv(src / "interiors.csv"), read_csv(src / "tenants.csv")
-    if not (costar or parking or interiors):
-        sys.exit(f"No rows found in {src}/costar.csv, parking.csv or interiors.csv. See real-data/README.md.")
+    # rent comparables (backend/rent_comps.py): asking rents near downtown, for the rent check
+    rents = [{k: v for k, v in {"lat": num(r.get("lat")), "lon": num(r.get("lon")), "beds": num(r.get("beds"), int),
+                                "rent": num(r.get("rent_month"), int), "sqft": num(r.get("sqft"), int),
+                                "src": r.get("source") or None}.items() if v is not None}
+             for r in read_csv(src / "rents.csv") if num(r.get("rent_month")) and num(r.get("lat")) is not None]
+    if not (costar or parking or interiors or rents):
+        sys.exit(f"No rows found in {src}/costar.csv, parking.csv, interiors.csv or rents.csv. See real-data/README.md.")
 
     by_osm, report = match(costar, features)
     by_cid = {r["costar_id"]: oid for oid, r in by_osm.items()}
@@ -167,14 +172,14 @@ def main():
     overlay = {"generated": dt.datetime.now().isoformat(timespec="seconds"),
                "counts": {"costar": len(by_osm), "parking": sum(1 for b in buildings.values() if b.get("parking")),
                           "interiors": sum(1 for b in buildings.values() if b.get("interior")),
-                          "tenants": sum(len(b.get("tenants") or []) for b in buildings.values())},
-               "buildings": buildings}
+                          "tenants": sum(len(b.get("tenants") or []) for b in buildings.values()), "rents": len(rents)},
+               "buildings": buildings, "rents": rents}
     out.mkdir(parents=True, exist_ok=True)
     (out / "real_overlay.json").write_text(json.dumps(overlay, indent=1), encoding="utf-8")
     (out / "real_overlay.js").write_text("window.LIGHTWELL_REAL = " + json.dumps(overlay) + ";\n", encoding="utf-8")
 
     print(f"Matched {len(by_osm)} of {len(costar)} CoStar office rows to OpenStreetMap footprints; "
-          f"{overlay['counts']['tenants']} tenancies, {overlay['counts']['parking']} with parking counts, {overlay['counts']['interiors']} with scans.")
+          f"{overlay['counts']['tenants']} tenancies, {overlay['counts']['parking']} with parking counts, {overlay['counts']['interiors']} with scans; {len(rents)} rent comparables.")
     for cid, how, oid in report:
         print(f"  {cid:>12}  {how:<18} {'osm ' + str(oid) if oid else ''}")
     for kind, cid in orphans:

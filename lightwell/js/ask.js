@@ -38,6 +38,8 @@
         : `It <b>doesn't pass</b>: ${esc(b.why.join(', '))}. It would give ${LW.fmt(p.homes)} homes at ${LW.money(p.cpu)} each (cap ${LW.money(LW.S.cap)}).`)
       + ` Fire screen: ${LW.SAFE_LABEL[p.safety.status].toLowerCase()} (preliminary). Texas fast-track: ${LW.FT_LABEL[ft.status].toLowerCase()}${ft.status === 'shuffle' ? `, ${ft.short} more empty floors needed` : ''}.`
       + (sc ? ` Occupancy is a <b>scout estimate</b>: ${pct(sc.value)} (${pct(sc.lo)}–${pct(sc.hi)}, ${sc.confidence} confidence).` : '')
+      + (() => { const r = LW.rentCheck(b); return !r ? '' : r.verdict === 'no_data' ? ` Needs about ${LW.usd(r.required)}/month rent per home (no CoStar rents loaded).`
+        : ` Rent check: ${LW.RENT_LABEL[r.verdict].toLowerCase()} (needs ${LW.usd(r.required)}, market ${LW.usd(r.market)}).`; })()
       + (b.assumed.length ? `<br><i>Assumed:</i> ${esc(b.assumed.join('; '))}.` : '')
       + `<br><span class="srcs">${srcs}</span>`;
   }
@@ -96,11 +98,23 @@
       + `about ${LW.bigMoney(plan.cost)} in incentives${plan.cost_per_home_gained ? ` (${LW.money(plan.cost_per_home_gained)} per home unlocked)` : ''}. `
       + `Red team: <b>${LW.VERDICT[ch.verdict].toLowerCase()}</b>.${top.length ? ' ' + esc(top[0].text) : ''} The arcs are on the map.`;
   }
+  function rentAnswer(b) {
+    const r = LW.rentCheck(b); if (!r) return `${link(b)} has no homes under this brief, so there is no rent to check.`;
+    if (r.verdict === 'no_data') return `${link(b)} needs about <b>${LW.usd(r.required)}/month</b> per home to pay back its conversion (${LW.money(b.plan.cpu)} per home at a ${Math.round(LW.A.yieldOnCost * 1000) / 10}% yield). No CoStar rents are loaded to compare: run <code>backend/rent_comps.py</code> on the CoStar kit.`;
+    return `${link(b)}: <b>${LW.RENT_LABEL[r.verdict]}.</b> It needs ${LW.usd(r.required)}/month per home; ${r.n} CoStar listings within ${LW.fmt(r.radius_m)} m ask about <b>${LW.usd(r.market)}</b> `
+      + `(${r.types.map(x => `${LW.RENT_TYPES[x.t]} ${LW.usd(x.rent)}`).join(', ')}). The market supports up to ${LW.money(r.supports_cost_per_home)} per home. `
+      + `A household needs about ${LW.money(r.income_needed)}/yr to afford it, ${pct(r.income_share)} of Houston's median income.`;
+  }
   function localAnswer(q) {
     const ts = towersIn(q);
     if (/\b(estimate|fill|guess|infer)\b/i.test(q) || /\bscout\b/i.test(q)) return { html: scout(), ids: [] };
     if (/\b(which|what|where)\b.*\b(costar|data|request|missing|gaps?)\b|\bdata (gaps?|requests?)\b|\bpriorit/i.test(q)) return { html: requests(), ids: (LW.dataRequests || []).map(x => x.id) };
     if (/what if|what happens if|\bif (the )?(cap|we)\b|\bwould\b.*\b(cap|pass)\b/i.test(q)) { const h = whatIf(q); if (h) return { html: h, ids: [] }; }
+    if (/\b(rents?|afford\w*|income|pay back|market rent)\b/i.test(q)) {
+      const bs = ts.length ? ts.slice(0, 3) : passing().slice(0, 3);
+      if (!bs.length) return { html: 'Nothing passes the brief, so there is no tower to check rents for.', ids: [] };
+      return { html: bs.map(rentAnswer).join('<hr>'), ids: bs.map(b => b.id) };
+    }
     if (ts.length >= 2 && /compar|\bvs\.?\b|versus|better|differ/i.test(q)) return { html: compare(ts.slice(0, 4)), ids: ts.map(b => b.id) };
     if (ts.length && /tenant|move|shuffle|unlock/i.test(q)) return { html: moves(ts[0]), ids: [ts[0].id] };
     if (ts.length && /fast.?track|65|sb ?840|texas|law/i.test(q)) {
@@ -118,7 +132,7 @@
       return { html: `${P.length} of ${LW.B.length} towers pass the brief: <b>${LW.fmt(h)} homes</b> and about <b>${LW.fmt(c)} t CO₂e</b> of embodied carbon avoided versus building new.`, ids: P.map(b => b.id) };
     }
     return { html: `I can answer, offline: <b>a tower</b> ("tell me about HOU-07", "why does HOU-12 fail?"), <b>compare</b> ("compare HOU-03 and HOU-17"), <b>what-ifs</b> ("what if the cap were $350k?"),
-      <b>Texas fast-track</b> and <b>tenant moves</b> for a tower, and the <b>data scout</b> ("which towers need CoStar data?", "estimate the missing data"). With an Anthropic key on the backend, Claude answers any question with the same tools.`, ids: [] };
+      <b>Texas fast-track</b>, <b>tenant moves</b> and <b>rent / affordability</b> for a tower, and the <b>data scout</b> ("which towers need CoStar data?", "estimate the missing data"). With an Anthropic key on the backend, Claude answers any question with the same tools.`, ids: [] };
   }
 
   // ---------------- Claude through the backend ----------------
@@ -171,7 +185,7 @@
     if (t) { e.preventDefault(); const b = LW.B.find(x => x.id === t.dataset.t); if (b) LW.onSelect(b, true); return; }
     if (e.target.dataset.apply && LW.pendingBrief) { LW.setBrief(LW.pendingBrief); LW.analyzeAll(); LW.refresh(); e.target.disabled = true; e.target.textContent = 'Applied'; LW.pendingBrief = null; }
   });
-  const CHIPS = ['Which towers need CoStar data?', 'Estimate the missing data', 'Why is the top pick #1?', 'Compare the top two', 'What if the cap were $350k?'];
+  const CHIPS = ['Which towers need CoStar data?', 'Estimate the missing data', 'Why is the top pick #1?', 'Compare the top two', 'Can people afford the top pick?', 'What if the cap were $350k?'];
   $('askChips').innerHTML = CHIPS.map(c => `<button type="button">${esc(c)}</button>`).join('');
   $('askChips').onclick = e => { if (e.target.tagName === 'BUTTON') ask(e.target.textContent); };
   // say who answers, once the backend check is done

@@ -274,3 +274,38 @@ def test_estimate_still_fails_require_real():
     assert b.src["rep"] == "ESTIMATE"
     S = {"require": ["market"]}
     assert "missing real CoStar data" in analyze(b, S).why
+
+
+# ---------------- Rent check ----------------
+def test_rent_check_parity():
+    from rent import rent_check
+    from scout import scout_gaps
+    ps, pr = ROOT / "tests" / "js_scout.json", ROOT / "tests" / "js_rent.json"
+    if not (ps.exists() and pr.exists()):
+        pytest.skip("run node tests/parity.mjs first")
+    d, r = json.loads(ps.read_text()), json.loads(pr.read_text())
+    bs = [Building(**row) for row in d["input"]]
+    for e in scout_gaps(bs):                      # same state as parity.mjs: estimates applied, then analysed
+        b = next(x for x in bs if x.id == e["id"])
+        b.rep, b.src["rep"] = e["value"], "ESTIMATE"
+    n = 0
+    for b, row in zip(bs, r["rows"]):
+        analyze(b, d["S"], d["A"])
+        b.rentMarket = row["rentMarket"]
+        assert rent_check(b, r["A"]) == row["check"], b.id
+        n += bool(row["check"] and row["check"]["verdict"] != "no_data")
+    assert n > 20
+
+
+def test_rent_check_maths():
+    from rent import rent_check
+    b = analyze(mk(id="R"))
+    b.rentMarket = {"n": 12, "radius": 1200, "psf": 2.0, "psfN": 12, "all": 1500, "byBed": {"1": {"rent": 1800, "n": 4}}}
+    c = rent_check(b)
+    A = {"yieldOnCost": 0.065, "opexPerHomeYr": 7000, "rentVacancy": 0.05}
+    assert c["required"] == round((b.plan["cpu"] * A["yieldOnCost"] + A["opexPerHomeYr"]) / (12 * 0.95))
+    one = [t for t in c["types"] if t["t"] == 1]
+    assert not one or one[0]["rent"] == 1800                                   # bedroom median wins over $/sq ft
+    assert c["verdict"] == ("works" if c["market"] >= c["required"] else "close" if c["market"] >= 0.9 * c["required"] else "gap")
+    b.rentMarket = None
+    assert rent_check(b)["verdict"] == "no_data"                               # no CoStar rents: nothing invented
